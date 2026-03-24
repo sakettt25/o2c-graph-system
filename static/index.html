@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>O2C Graph Intelligence</title>
+<style>
+  :root {
+    --bg: #080c14; --panel: #0d1221; --card: #111827;
+    --border: rgba(59,130,246,.15); --border-h: rgba(59,130,246,.4);
+    --txt: #f1f5f9; --txt2: #94a3b8; --muted: #475569;
+    --acc: #3b82f6; --acc-glow: rgba(59,130,246,.3);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--txt)}
+  ::-webkit-scrollbar{width:4px;height:4px}
+  ::-webkit-scrollbar-thumb{background:rgba(59,130,246,.3);border-radius:2px}
+
+  /* ── Layout ── */
+  #app{display:flex;flex-direction:column;height:100vh}
+  #topbar{height:48px;background:rgba(13,18,33,.9);border-bottom:1px solid var(--border);
+          display:flex;align-items:center;padding:0 20px;justify-content:space-between;
+          backdrop-filter:blur(20px);flex-shrink:0;z-index:30}
+  #statsbar{height:36px;background:#0a0e1a;border-bottom:1px solid rgba(59,130,246,.08);
+            display:flex;align-items:center;padding:0 20px;gap:24px;overflow-x:auto;flex-shrink:0}
+  #main{flex:1;display:flex;overflow:hidden;position:relative}
+  #graph-container{flex:1;position:relative;overflow:hidden}
+  #chat-container{width:400px;flex-shrink:0;display:flex;flex-direction:column;
+                  background:rgba(13,18,33,.9);border-left:1px solid var(--border);
+                  backdrop-filter:blur(20px);transition:width .3s ease}
+  #chat-container.collapsed{width:0;overflow:hidden}
+  #chat-toggle{position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:20;
+               background:rgba(13,18,33,.85);border:1px solid var(--border);border-right:none;
+               border-radius:8px 0 0 8px;padding:12px 6px;cursor:pointer;color:var(--txt2);
+               backdrop-filter:blur(12px);transition:background .2s}
+  #chat-toggle:hover{background:rgba(59,130,246,.1)}
+
+  /* ── Topbar ── */
+  .tb-logo{width:28px;height:28px;border-radius:8px;
+           background:linear-gradient(135deg,#3b82f6,#7c3aed);
+           display:flex;align-items:center;justify-content:center;
+           box-shadow:0 0 16px rgba(59,130,246,.3)}
+  .tb-title{font-size:14px;font-weight:600;letter-spacing:-.3px}
+  .tb-sep{color:#334155;margin:0 8px}
+  .tb-sub{font-size:13px;color:var(--txt2)}
+  .live-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;
+              background:rgba(59,130,246,.1);color:var(--acc);border:1px solid rgba(59,130,246,.2);margin-left:8px}
+  .tb-right{display:flex;align-items:center;gap:16px;font-size:11px;color:var(--muted)}
+  .status-dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:4px;
+              animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+
+  /* ── Stats bar ── */
+  .stat-item{display:flex;align-items:center;gap:6px;flex-shrink:0}
+  .stat-dot{width:6px;height:6px;border-radius:50%}
+  .stat-label{font-size:11px;color:var(--muted)}
+  .stat-val{font-size:11px;font-weight:600}
+
+  /* ── Graph overlays ── */
+  #graph-loading{position:absolute;inset:0;display:flex;flex-direction:column;
+                 align-items:center;justify-content:center;background:var(--bg);z-index:10}
+  .spinner{width:56px;height:56px;position:relative;margin-bottom:16px}
+  .spinner-ring{position:absolute;inset:0;border-radius:50%;border:2px solid transparent;animation:spin 1.2s linear infinite}
+  .spinner-ring:nth-child(1){border-top-color:#3b82f6}
+  .spinner-ring:nth-child(2){border-right-color:#7c3aed;animation-duration:1.8s;animation-direction:reverse;inset:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .spinner-ping{position:absolute;inset:-4px;border-radius:50%;border:2px solid rgba(59,130,246,.2);animation:ping 2s ease-out infinite}
+  @keyframes ping{0%{transform:scale(1);opacity:1}100%{transform:scale(1.5);opacity:0}}
+
+  #graph-controls{position:absolute;top:12px;right:12px;background:rgba(13,18,33,.85);
+                  border:1px solid var(--border);border-radius:10px;padding:10px 12px;
+                  font-size:10px;color:var(--muted);backdrop-filter:blur(12px);line-height:1.8}
+  #graph-info{position:absolute;top:12px;left:12px;background:rgba(13,18,33,.85);
+              border:1px solid var(--border);border-radius:10px;padding:6px 12px;
+              font-size:12px;color:var(--txt2);backdrop-filter:blur(12px)}
+  #graph-info span{color:var(--acc);font-weight:600}
+
+  #legend{position:absolute;bottom:12px;left:12px;display:flex;flex-wrap:wrap;gap:6px;max-width:320px}
+  .legend-pill{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--txt2);
+               padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.04);
+               border:1px solid rgba(255,255,255,.08);cursor:pointer;transition:all .15s;
+               user-select:none}
+  .legend-pill:hover{background:rgba(255,255,255,.08)}
+  .legend-pill.active{border-color:currentColor;background:rgba(0,0,0,.3)}
+  .legend-pill.inactive{opacity:.3}
+
+  #highlight-bar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
+                 background:rgba(13,18,33,.9);border:1px solid rgba(59,130,246,.3);
+                 border-radius:24px;padding:6px 14px;font-size:12px;color:#93c5fd;
+                 display:flex;align-items:center;gap:8px;backdrop-filter:blur(12px);
+                 animation:fadeIn .3s ease;display:none}
+  @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(6px)}to{opacity:1;transform:translateX(-50%)}}
+
+  /* ── Tooltip ── */
+  #tooltip{position:fixed;pointer-events:none;background:rgba(13,18,33,.97);
+           border:1px solid rgba(59,130,246,.25);border-radius:10px;padding:10px 14px;
+           font-size:12px;backdrop-filter:blur(16px);z-index:1000;max-width:240px;
+           box-shadow:0 8px 32px rgba(0,0,0,.5);display:none}
+  .tt-type{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+  .tt-label{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--txt);margin-bottom:4px}
+  .tt-row{display:flex;gap:8px;font-size:10px;margin-top:2px}
+  .tt-key{color:var(--muted);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tt-val{color:var(--txt2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tt-hint{font-size:9px;color:var(--muted);margin-top:6px}
+
+  /* ── Node detail panel ── */
+  #node-panel{position:absolute;top:12px;left:12px;width:280px;
+              background:rgba(17,24,39,.92);border:1px solid rgba(59,130,246,.2);
+              border-radius:14px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.5);
+              backdrop-filter:blur(24px);z-index:20;animation:slideIn .2s ease;display:none}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
+  #node-panel-header{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.05);
+                     display:flex;align-items:flex-start;justify-content:space-between}
+  .np-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;
+           justify-content:center;flex-shrink:0;margin-right:10px}
+  .np-type{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+  .np-label{font-size:12px;font-weight:600;color:var(--txt);margin-top:2px;
+            font-family:'JetBrains Mono',monospace;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .np-close{color:var(--muted);cursor:pointer;padding:2px;transition:color .15s;flex-shrink:0}
+  .np-close:hover{color:var(--txt)}
+  #node-panel-body{max-height:340px;overflow-y:auto}
+  .np-row{display:flex;justify-content:space-between;padding:6px 14px;gap:8px;
+          border-bottom:1px solid rgba(255,255,255,.03);transition:background .1s}
+  .np-row:hover{background:rgba(255,255,255,.02)}
+  .np-key{font-size:10px;color:var(--muted);flex-shrink:0;max-width:100px}
+  .np-val{font-size:10px;color:var(--txt2);text-align:right;font-family:'JetBrains Mono',monospace;
+          max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .np-section{padding:6px 14px 4px;font-size:9px;color:var(--muted);text-transform:uppercase;
+              letter-spacing:.08em;background:rgba(255,255,255,.02)}
+  .np-footer{padding:6px 14px;border-top:1px solid rgba(255,255,255,.05);display:flex;
+             justify-content:space-between;font-size:10px;color:var(--muted)}
+  .status-badge{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:500}
+
+  /* ── Chat panel ── */
+  #chat-header{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.06);
+               display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+  #chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+  #chat-input-area{flex-shrink:0;padding:12px;border-top:1px solid rgba(255,255,255,.06)}
+
+  .msg{display:flex;animation:msgIn .2s ease}
+  @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  .msg.user{justify-content:flex-end}
+  .msg.assistant{justify-content:flex-start}
+  .msg-avatar{width:24px;height:24px;border-radius:50%;flex-shrink:0;margin-top:2px;margin-right:8px;
+              background:linear-gradient(135deg,#1d4ed8,#7c3aed);display:flex;align-items:center;justify-content:center}
+  .msg-bubble{max-width:88%;border-radius:12px;padding:10px 13px;font-size:12px;line-height:1.6}
+  .msg.user .msg-bubble{background:#2563eb;color:#fff;border-bottom-right-radius:4px}
+  .msg.assistant .msg-bubble{background:#141a2e;border:1px solid rgba(255,255,255,.06);
+                               color:var(--txt2);border-bottom-left-radius:4px}
+  .msg.assistant .msg-bubble.guardrail{background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.2);color:#fde68a}
+
+  .msg-meta{display:flex;gap:6px;margin-top:6px}
+  .meta-btn{font-size:10px;padding:2px 8px;border-radius:12px;border:1px solid;
+            cursor:pointer;transition:all .15s;background:transparent}
+  .meta-btn.sql{color:#60a5fa;border-color:rgba(59,130,246,.25)}
+  .meta-btn.sql:hover{background:rgba(59,130,246,.1)}
+  .meta-btn.data{color:#34d399;border-color:rgba(52,211,153,.25)}
+  .meta-btn.data:hover{background:rgba(52,211,153,.1)}
+  .meta-btn.hl{color:#a78bfa;border-color:rgba(167,139,250,.25)}
+  .meta-btn.hl:hover{background:rgba(167,139,250,.1)}
+
+  .sql-block{font-family:'JetBrains Mono',monospace;font-size:10px;background:rgba(0,0,0,.4);
+             border:1px solid rgba(59,130,246,.12);border-radius:6px;padding:8px 10px;
+             color:#93c5fd;white-space:pre-wrap;word-break:break-all;margin-top:6px;
+             overflow-x:auto;max-height:150px}
+  .data-table-wrap{margin-top:6px;overflow-x:auto;border-radius:8px;
+                   border:1px solid rgba(255,255,255,.06)}
+  .data-table{width:100%;border-collapse:collapse;font-size:10px}
+  .data-table th{padding:5px 8px;color:var(--muted);border-bottom:1px solid rgba(255,255,255,.06);
+                 text-align:left;font-weight:500;white-space:nowrap;background:rgba(255,255,255,.02)}
+  .data-table td{padding:4px 8px;border-bottom:1px solid rgba(255,255,255,.03);
+                 color:var(--txt2);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .data-table tr:hover td{background:rgba(59,130,246,.04)}
+  .data-more{padding:4px 8px;font-size:10px;color:var(--muted);text-align:center;
+             border-top:1px solid rgba(255,255,255,.04)}
+
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+  .cursor-blink::after{content:'▋';animation:blink .8s infinite;color:var(--acc);font-size:.85em}
+
+  .suggest-grid{display:flex;flex-direction:column;gap:5px;margin-top:12px}
+  .suggest-btn{text-align:left;font-size:11px;padding:8px 12px;border-radius:8px;
+               border:1px solid rgba(255,255,255,.06);color:var(--txt2);background:transparent;
+               cursor:pointer;transition:all .15s}
+  .suggest-btn:hover{color:var(--txt);background:rgba(59,130,246,.06);border-color:rgba(59,130,246,.2)}
+
+  #input-wrap{display:flex;align-items:flex-end;gap:8px;background:#141a2e;
+              border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden;
+              transition:border-color .2s}
+  #input-wrap:focus-within{border-color:rgba(59,130,246,.4)}
+  #chat-input{flex:1;background:transparent;border:none;outline:none;font-size:12px;
+              color:var(--txt);padding:10px 14px;resize:none;min-height:40px;max-height:100px;
+              font-family:inherit;line-height:1.5}
+  #chat-input::placeholder{color:var(--muted)}
+  #send-btn{margin:6px 8px 6px 0;width:30px;height:30px;border-radius:8px;border:none;cursor:pointer;
+            background:linear-gradient(135deg,#1d4ed8,#3b82f6);flex-shrink:0;
+            display:flex;align-items:center;justify-content:center;transition:all .2s;
+            box-shadow:0 2px 12px rgba(59,130,246,.3)}
+  #send-btn:hover{box-shadow:0 2px 20px rgba(59,130,246,.5);transform:translateY(-1px)}
+  #send-btn:disabled{opacity:.3;cursor:not-allowed;transform:none}
+  .powered{font-size:9px;color:var(--muted);text-align:center;margin-top:6px}
+
+  /* welcome card */
+  .welcome-card{background:#141a2e;border:1px solid rgba(255,255,255,.06);border-radius:12px;
+                padding:14px;font-size:12px;color:var(--txt2);line-height:1.6}
+  .welcome-card strong{color:#93c5fd}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Topbar ── -->
+  <header id="topbar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="tb-logo">
+        <svg width="16" height="16" fill="none" stroke="white" viewBox="0 0 24 24">
+          <circle cx="12" cy="5" r="2" stroke-width="2"/>
+          <circle cx="5" cy="19" r="2" stroke-width="2"/>
+          <circle cx="19" cy="19" r="2" stroke-width="2"/>
+          <path d="M12 7v3M5 17l5-4M19 17l-5-4" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span class="tb-title">O2C Graph Intelligence</span>
+      <span class="tb-sep">/</span>
+      <span class="tb-sub">Order to Cash</span>
+      <span class="live-badge">LIVE</span>
+    </div>
+    <div class="tb-right">
+      <span><span class="status-dot" style="background:#10b981"></span>Graph Active</span>
+      <span><span class="status-dot" style="background:#8b5cf6"></span>AI Connected</span>
+      <span style="color:#334155">SAP ECC Dataset</span>
+    </div>
+  </header>
+
+  <!-- ── Stats bar ── -->
+  <div id="statsbar">
+    <span style="font-size:11px;color:#334155;animation:blink 1.5s infinite">Loading…</span>
+  </div>
+
+  <!-- ── Main ── -->
+  <div id="main">
+
+    <!-- Graph -->
+    <div id="graph-container">
+      <div id="graph-loading">
+        <div class="spinner">
+          <div class="spinner-ping"></div>
+          <div class="spinner-ring"></div>
+          <div class="spinner-ring"></div>
+        </div>
+        <p style="color:var(--txt2);font-size:13px;font-weight:500">Building Knowledge Graph</p>
+        <p style="color:var(--muted);font-size:11px;margin-top:4px">Processing SAP O2C entities…</p>
+      </div>
+
+      <div id="graph-info" style="display:none">
+        <span id="node-count">0</span> nodes · <span id="edge-count">0</span> edges
+      </div>
+
+      <div id="graph-controls">
+        <div>🖱 Drag – rotate</div>
+        <div>⚙ Scroll – zoom</div>
+        <div>👆 Click – inspect</div>
+      </div>
+
+      <div id="legend"></div>
+
+      <div id="highlight-bar">
+        <span style="width:6px;height:6px;border-radius:50%;background:#3b82f6;display:inline-block;animation:pulse 1.5s infinite"></span>
+        <span id="hl-count">0</span> node(s) highlighted from query
+        <button onclick="clearHighlight()" style="background:none;border:none;color:var(--muted);cursor:pointer;margin-left:4px">✕</button>
+      </div>
+
+      <div id="node-panel">
+        <div id="node-panel-header">
+          <div style="display:flex;align-items:flex-start">
+            <div class="np-icon" id="np-icon">
+              <div style="width:10px;height:10px;border-radius:50%" id="np-dot"></div>
+            </div>
+            <div>
+              <div class="np-type" id="np-type"></div>
+              <div class="np-label" id="np-label"></div>
+            </div>
+          </div>
+          <div class="np-close" onclick="closeNodePanel()">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </div>
+        </div>
+        <div id="node-panel-body"></div>
+        <div class="np-footer">
+          <span id="np-id" style="font-family:monospace"></span>
+          <span id="np-count"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat toggle -->
+    <button id="chat-toggle" onclick="toggleChat()">
+      <svg id="chat-toggle-icon" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="transition:transform .3s">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+      </svg>
+    </button>
+
+    <!-- Chat -->
+    <div id="chat-container">
+      <div id="chat-header">
+        <div>
+          <div style="font-size:13px;font-weight:600">Chat with Graph</div>
+          <div style="font-size:11px;color:var(--muted)">Order to Cash · AI Analyst</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:#34d399">
+          <span style="width:6px;height:6px;border-radius:50%;background:#34d399;animation:pulse 2s infinite"></span>
+          Gemini Flash
+        </div>
+      </div>
+
+      <div id="chat-messages">
+        <div class="welcome-card">
+          Hi! I can help you analyze the <strong>Order to Cash</strong> process.
+          Ask me about sales orders, billing documents, deliveries, payments, customers, or products.
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Try asking</div>
+          <div class="suggest-grid" id="suggestions"></div>
+        </div>
+      </div>
+
+      <div id="chat-input-area">
+        <div id="input-wrap">
+          <textarea id="chat-input" rows="1" placeholder="Ask about orders, billing, deliveries…"></textarea>
+          <button id="send-btn" onclick="sendMessage()">
+            <svg width="13" height="13" fill="none" stroke="white" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+        <div class="powered">Powered by Gemini · Grounded in SAP O2C dataset</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip">
+  <div class="tt-type" id="tt-type"></div>
+  <div class="tt-label" id="tt-label"></div>
+  <div id="tt-rows"></div>
+  <div class="tt-hint">Click to inspect →</div>
+</div>
+
+<!-- CDN Libraries -->
+<script src="https://unpkg.com/three@0.167.0/build/three.min.js"></script>
+<script src="https://unpkg.com/3d-force-graph@1.73.4/dist/3d-force-graph.min.js"></script>
+
+<script>
+// ── Constants ────────────────────────────────────────────────────────────────
+const NODE_COLORS = {
+  SalesOrder:'#3b82f6', BillingDocument:'#10b981', Delivery:'#f59e0b',
+  Payment:'#8b5cf6', JournalEntry:'#ec4899', Customer:'#14b8a6', Product:'#f97316'
+};
+const NODE_SIZES = {Customer:14,SalesOrder:8,BillingDocument:7,Delivery:7,Payment:6,JournalEntry:6,Product:5};
+const SUGGESTS = [
+  'Which products have the most billing documents?',
+  'Trace the full flow for billing document 91150187',
+  'Show sales orders delivered but not yet billed',
+  'Top 5 customers by total order value',
+  'Which deliveries have no billing document?',
+  'List all journal entries for customer payments',
+];
+
+// ── State ────────────────────────────────────────────────────────────────────
+let graphInstance = null;
+let fullGraphData = {nodes:[], links:[]};
+let highlightedNodes = new Set();
+let activeFilters = new Set(Object.keys(NODE_COLORS));
+let chatHistory = [];
+let isLoading = false;
+let chatOpen = true;
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  buildLegend();
+  buildSuggestions();
+  loadStats();
+  loadGraph();
+
+  const input = document.getElementById('chat-input');
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 100) + 'px';
+  });
+
+  document.addEventListener('mousemove', e => {
+    const tt = document.getElementById('tooltip');
+    if (tt.style.display !== 'none') {
+      tt.style.left = (e.clientX + 16) + 'px';
+      tt.style.top  = (e.clientY - 8) + 'px';
+    }
+  });
+});
+
+// ── Stats ────────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const r = await fetch('/api/summary');
+    const d = await r.json();
+    const items = [
+      {label:'Sales Orders',  val:d.salesOrders,      color:'#3b82f6'},
+      {label:'Billing Docs',  val:d.billingDocuments,  color:'#10b981'},
+      {label:'Deliveries',    val:d.deliveries,        color:'#f59e0b'},
+      {label:'Payments',      val:d.payments,          color:'#8b5cf6'},
+      {label:'Customers',     val:d.customers,         color:'#14b8a6'},
+      {label:'Products',      val:d.products,          color:'#f97316'},
+      {label:'Revenue',       val:`${d.currency} ${(d.totalRevenue/1000).toFixed(1)}K`, color:'#22c55e'},
+    ];
+    document.getElementById('statsbar').innerHTML = items.map(i =>
+      `<div class="stat-item">
+        <div class="stat-dot" style="background:${i.color}"></div>
+        <span class="stat-label">${i.label}</span>
+        <span class="stat-val" style="color:${i.color}">${i.val}</span>
+      </div>`).join('');
+  } catch(e) { console.error('Stats error', e); }
+}
+
+// ── Graph ────────────────────────────────────────────────────────────────────
+async function loadGraph() {
+  try {
+    const r = await fetch('/api/graph');
+    fullGraphData = await r.json();
+    document.getElementById('graph-loading').style.display = 'none';
+    document.getElementById('graph-info').style.display = 'block';
+    initGraph();
+  } catch(e) {
+    document.getElementById('graph-loading').innerHTML =
+      `<p style="color:#ef4444">Failed to load graph: ${e.message}</p>`;
+  }
+}
+
+function getFilteredData() {
+  const nodes = fullGraphData.nodes.filter(n => activeFilters.has(n.nodeType));
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const links = fullGraphData.links.filter(l => {
+    const s = l.source?.id ?? l.source;
+    const t = l.target?.id ?? l.target;
+    return nodeIds.has(s) && nodeIds.has(t);
+  });
+  return {nodes, links};
+}
+
+function initGraph() {
+  const container = document.getElementById('graph-container');
+  const w = container.clientWidth, h = container.clientHeight;
+  const data = getFilteredData();
+
+  graphInstance = ForceGraph3D()(container)
+    .width(w).height(h)
+    .backgroundColor('#080c14')
+    .nodeLabel('')
+    .nodeThreeObject(node => makeNodeObject(node))
+    .nodeThreeObjectExtend(false)
+    .linkColor(link => getLinkColor(link))
+    .linkWidth(0.5)
+    .linkDirectionalParticles(link => getParticleCount(link))
+    .linkDirectionalParticleSpeed(0.004)
+    .linkDirectionalParticleWidth(1.5)
+    .linkDirectionalParticleColor(() => '#3b82f6')
+    .onNodeClick(node => handleNodeClick(node))
+    .onNodeHover(node => handleNodeHover(node))
+    .graphData(data);
+
+  graphInstance.cameraPosition({x:0,y:0,z:600});
+
+  // Lighting
+  const scene = graphInstance.scene();
+  const ambient = new THREE.AmbientLight(0x404060, 2);
+  scene.add(ambient);
+  const dir = new THREE.DirectionalLight(0x3b82f6, 1);
+  dir.position.set(100,100,100);
+  scene.add(dir);
+
+  updateGraphInfo(data);
+
+  window.addEventListener('resize', () => {
+    graphInstance.width(container.clientWidth).height(container.clientHeight);
+  });
+}
+
+function makeNodeObject(node) {
+  const color = NODE_COLORS[node.nodeType] ?? '#64748b';
+  const size = NODE_SIZES[node.nodeType] ?? 5;
+  const isHL = highlightedNodes.has(node.id);
+  const isDim = highlightedNodes.size > 0 && !isHL;
+
+  const geo = new THREE.SphereGeometry(isHL ? size * 1.7 : size, 12, 12);
+  const mat = new THREE.MeshLambertMaterial({
+    color: isDim ? 0x1e2d4a : parseInt(color.slice(1), 16),
+    transparent: true,
+    opacity: isDim ? 0.15 : isHL ? 1.0 : 0.85,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+
+  if (isHL) {
+    const rg = new THREE.TorusGeometry(size * 2.3, size * 0.18, 6, 24);
+    const rm = new THREE.MeshBasicMaterial({color: parseInt(color.slice(1),16), transparent:true, opacity:0.7});
+    mesh.add(new THREE.Mesh(rg, rm));
+    // Outer pulse ring
+    const rg2 = new THREE.TorusGeometry(size * 3.0, size * 0.08, 6, 24);
+    const rm2 = new THREE.MeshBasicMaterial({color: parseInt(color.slice(1),16), transparent:true, opacity:0.3});
+    mesh.add(new THREE.Mesh(rg2, rm2));
+  }
+  return mesh;
+}
+
+function getLinkColor(link) {
+  if (!highlightedNodes.size) return 'rgba(59,130,246,0.12)';
+  const s = link.source?.id ?? link.source;
+  const t = link.target?.id ?? link.target;
+  return (highlightedNodes.has(s) || highlightedNodes.has(t))
+    ? 'rgba(59,130,246,0.7)' : 'rgba(30,45,74,0.12)';
+}
+
+function getParticleCount(link) {
+  if (!highlightedNodes.size) return 0;
+  const s = link.source?.id ?? link.source;
+  const t = link.target?.id ?? link.target;
+  return (highlightedNodes.has(s) || highlightedNodes.has(t)) ? 4 : 0;
+}
+
+function refreshGraph() {
+  if (!graphInstance) return;
+  graphInstance.graphData(getFilteredData());
+  graphInstance.refresh();
+  updateGraphInfo(getFilteredData());
+}
+
+function updateGraphInfo(data) {
+  document.getElementById('node-count').textContent = data.nodes.length;
+  document.getElementById('edge-count').textContent = data.links.length;
+}
+
+function handleNodeClick(node) {
+  // Focus camera
+  const d = 80;
+  const r = 1 + d / Math.hypot(node.x||0, node.y||0, node.z||0);
+  graphInstance.cameraPosition(
+    {x:(node.x||0)*r, y:(node.y||0)*r, z:(node.z||0)*r}, node, 800
+  );
+  openNodePanel(node);
+}
+
+function handleNodeHover(node) {
+  const container = document.getElementById('graph-container');
+  container.style.cursor = node ? 'pointer' : 'grab';
+  const tt = document.getElementById('tooltip');
+  if (!node) { tt.style.display = 'none'; return; }
+  tt.style.display = 'block';
+  document.getElementById('tt-type').textContent = node.nodeType;
+  document.getElementById('tt-type').style.color = NODE_COLORS[node.nodeType] ?? '#64748b';
+  document.getElementById('tt-label').textContent = node.label;
+  const rows = Object.entries(node.data||{}).filter(([,v])=>v).slice(0,4);
+  document.getElementById('tt-rows').innerHTML = rows.map(([k,v])=>
+    `<div class="tt-row"><span class="tt-key">${k}</span><span class="tt-val">${v}</span></div>`).join('');
+}
+
+// ── Highlight ────────────────────────────────────────────────────────────────
+function setHighlight(nodeIds) {
+  highlightedNodes = new Set(nodeIds);
+  const bar = document.getElementById('highlight-bar');
+  if (nodeIds.length) {
+    document.getElementById('hl-count').textContent = nodeIds.length;
+    bar.style.display = 'flex';
+    refreshGraph();
+    setTimeout(clearHighlight, 12000);
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function clearHighlight() {
+  highlightedNodes = new Set();
+  document.getElementById('highlight-bar').style.display = 'none';
+  refreshGraph();
+}
+
+// ── Node panel ───────────────────────────────────────────────────────────────
+const FRIENDLY = {
+  salesOrder:'Sales Order', soldToParty:'Customer ID', totalNetAmount:'Net Amount',
+  transactionCurrency:'Currency', overallDeliveryStatus:'Delivery Status',
+  overallOrdReltdBillgStatus:'Billing Status', creationDate:'Created',
+  billingDocument:'Billing Doc', accountingDocument:'Acctg Doc',
+  deliveryDocument:'Delivery Doc', businessPartnerFullName:'Full Name',
+  productDescription:'Description', clearingDate:'Cleared On', postingDate:'Posted',
+};
+const STATUS = {A:{l:'Not Started',c:'#94a3b8'},B:{l:'Partial',c:'#f59e0b'},C:{l:'Complete',c:'#10b981'},
+                true:{l:'Yes',c:'#ef4444'},false:{l:'No',c:'#10b981'}};
+const PRIORITY = ['salesOrder','billingDocument','deliveryDocument','accountingDocument',
+                  'businessPartnerFullName','productDescription','totalNetAmount',
+                  'transactionCurrency','soldToParty','creationDate',
+                  'overallDeliveryStatus','overallOrdReltdBillgStatus'];
+
+function fmtVal(k, v) {
+  if (!v || v==='null') return '—';
+  const lk = k.toLowerCase();
+  if (lk.includes('date') && v.includes('T')) {
+    const d = new Date(v);
+    return isNaN(d) ? v : d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  }
+  if (lk.includes('amount') && !isNaN(parseFloat(v)))
+    return new Intl.NumberFormat('en-IN',{maximumFractionDigits:2}).format(parseFloat(v));
+  const badge = STATUS[v];
+  if (badge && (lk.includes('status')||lk.includes('cancel')||lk.includes('block')))
+    return `<span class="status-badge" style="background:${badge.c}20;color:${badge.c}">${badge.l}</span>`;
+  return v;
+}
+
+function openNodePanel(node) {
+  const color = NODE_COLORS[node.nodeType] ?? '#64748b';
+  const panel = document.getElementById('node-panel');
+  document.getElementById('np-type').textContent = node.nodeType;
+  document.getElementById('np-type').style.color = color;
+  document.getElementById('np-label').textContent = node.label;
+  document.getElementById('np-icon').style.background = color+'20';
+  document.getElementById('np-icon').style.border = `1px solid ${color}40`;
+  document.getElementById('np-dot').style.background = color;
+  document.getElementById('np-id').textContent = node.id;
+  document.getElementById('node-panel-body').innerHTML =
+    '<div class="np-row"><span class="np-key">Loading…</span></div>';
+  panel.style.display = 'block';
+
+  fetch(`/api/node/${encodeURIComponent(node.id)}`)
+    .then(r=>r.json())
+    .then(d => renderNodePanel(d, color))
+    .catch(()=>{
+      document.getElementById('node-panel-body').innerHTML =
+        '<div class="np-row"><span class="np-key" style="color:#ef4444">Load failed</span></div>';
+    });
+}
+
+function renderNodePanel(d, color) {
+  const data = d.data ?? {};
+  const allKeys = Object.keys(data).filter(k=>data[k]&&data[k]!=='null');
+  const prioRows = PRIORITY.filter(k=>data[k]).map(k=>[k,data[k]]);
+  const otherRows = allKeys.filter(k=>!PRIORITY.includes(k)).map(k=>[k,data[k]]);
+
+  let html = prioRows.map(([k,v])=>
+    `<div class="np-row">
+      <span class="np-key">${FRIENDLY[k]??k}</span>
+      <span class="np-val">${fmtVal(k,v)}</span>
+    </div>`).join('');
+
+  if (otherRows.length) {
+    html += `<div class="np-section">Additional Fields</div>`;
+    html += otherRows.slice(0,10).map(([k,v])=>
+      `<div class="np-row">
+        <span class="np-key" style="color:var(--muted)">${FRIENDLY[k]??k}</span>
+        <span class="np-val" style="color:var(--muted)">${fmtVal(k,v)}</span>
+      </div>`).join('');
+  }
+
+  // Sub-items
+  if (data.items?.length) {
+    html += `<div class="np-section">${data.items.length} Line Items</div>`;
+    html += data.items.slice(0,5).map(item=>
+      `<div class="np-row">
+        <span class="np-key">${item.salesOrderItem??item.billingDocumentItem??item.deliveryDocumentItem??'Item'}</span>
+        <span class="np-val">${item.material??item.netAmount??''}</span>
+      </div>`).join('');
+  }
+
+  document.getElementById('node-panel-body').innerHTML = html || '<div class="np-row"><span class="np-key">No data</span></div>';
+  document.getElementById('np-count').textContent = `${allKeys.length} fields`;
+}
+
+function closeNodePanel() {
+  document.getElementById('node-panel').style.display = 'none';
+}
+
+// ── Legend ───────────────────────────────────────────────────────────────────
+function buildLegend() {
+  const legend = document.getElementById('legend');
+  legend.innerHTML = Object.entries(NODE_COLORS).map(([type, color]) =>
+    `<div class="legend-pill active" data-type="${type}" style="color:${color}" onclick="toggleFilter('${type}')">
+      <span style="width:6px;height:6px;border-radius:50%;background:${color}"></span>
+      ${type}
+    </div>`).join('');
+}
+
+function toggleFilter(type) {
+  if (activeFilters.has(type)) {
+    if (activeFilters.size > 1) activeFilters.delete(type);
+  } else {
+    activeFilters.add(type);
+  }
+  document.querySelectorAll('.legend-pill').forEach(el => {
+    const t = el.dataset.type;
+    el.classList.toggle('active', activeFilters.has(t));
+    el.classList.toggle('inactive', !activeFilters.has(t));
+  });
+  refreshGraph();
+}
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+function buildSuggestions() {
+  document.getElementById('suggestions').innerHTML = SUGGESTS.map(q =>
+    `<button class="suggest-btn" onclick="sendMessage('${q.replace(/'/g,"\\'")}')">
+      ${q}
+    </button>`).join('');
+}
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  document.getElementById('chat-container').classList.toggle('collapsed', !chatOpen);
+  document.getElementById('chat-toggle-icon').style.transform = chatOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+  setTimeout(() => graphInstance?.width(document.getElementById('graph-container').clientWidth), 350);
+}
+
+async function sendMessage(text) {
+  if (isLoading) return;
+  const input = document.getElementById('chat-input');
+  const msg = (text || input.value).trim();
+  if (!msg) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  isLoading = true;
+  document.getElementById('send-btn').disabled = true;
+
+  appendMessage('user', msg);
+  const aId = appendMessage('assistant', '', {streaming: true});
+
+  try {
+    const res = await fetch('/api/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({message: msg, history: chatHistory.slice(-6)})
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const ct = res.headers.get('content-type') ?? '';
+
+    // JSON response (guardrail / error)
+    if (ct.includes('application/json')) {
+      const d = await res.json();
+      updateMessage(aId, d.answer || d.error || 'Error', {guardrail: d.type==='guardrail'});
+      chatHistory.push({role:'user',content:msg},{role:'assistant',content:d.answer||''});
+      return;
+    }
+
+    // Streaming SSE
+    const sqlEnc = res.headers.get('X-SQL');
+    const hlEnc = res.headers.get('X-Highlighted-Nodes');
+    const rowsEnc = res.headers.get('X-Rows-Preview');
+    const sql = sqlEnc ? decodeURIComponent(sqlEnc) : null;
+    const highlighted = hlEnc ? JSON.parse(decodeURIComponent(hlEnc)) : [];
+    const rows = rowsEnc ? JSON.parse(decodeURIComponent(rowsEnc)) : [];
+
+    if (highlighted.length) setHighlight(highlighted);
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let full = '';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      const text2 = dec.decode(value);
+      for (const line of text2.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        const raw = line.slice(6);
+        if (raw === '[DONE]') break;
+        try { full += JSON.parse(raw); } catch {}
+      }
+      updateMessage(aId, full, {streaming: true});
+    }
+
+    updateMessage(aId, full, {streaming:false, sql, rows, highlightedNodes: highlighted});
+    chatHistory.push({role:'user',content:msg},{role:'assistant',content:full});
+
+  } catch(e) {
+    updateMessage(aId, `Error: ${e.message}`, {});
+  } finally {
+    isLoading = false;
+    document.getElementById('send-btn').disabled = false;
+  }
+}
+
+let msgIdCounter = 0;
+function appendMessage(role, content, opts={}) {
+  const id = `msg-${++msgIdCounter}`;
+  const msgs = document.getElementById('chat-messages');
+  const isUser = role === 'user';
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.id = id;
+
+  if (!isUser) {
+    div.innerHTML = `
+      <div class="msg-avatar">
+        <svg width="11" height="11" fill="none" stroke="white" viewBox="0 0 24 24">
+          <circle cx="12" cy="5" r="2" stroke-width="2"/>
+          <circle cx="5" cy="19" r="2" stroke-width="2"/>
+          <circle cx="19" cy="19" r="2" stroke-width="2"/>
+          <path d="M12 7v3M5 17l5-4M19 17l-5-4" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;max-width:88%">
+        <div class="msg-bubble ${opts.guardrail?'guardrail':''} ${opts.streaming?'cursor-blink':''}" id="${id}-bubble">${content}</div>
+        <div class="msg-meta" id="${id}-meta" style="display:none"></div>
+      </div>`;
+  } else {
+    div.innerHTML = `<div class="msg-bubble">${escHtml(content)}</div>`;
+  }
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return id;
+}
+
+function updateMessage(id, content, opts={}) {
+  const bubble = document.getElementById(`${id}-bubble`);
+  if (!bubble) return;
+  bubble.classList.toggle('cursor-blink', !!opts.streaming);
+  bubble.textContent = content;
+
+  if (!opts.streaming && (opts.sql || opts.rows?.length || opts.highlightedNodes?.length)) {
+    const meta = document.getElementById(`${id}-meta`);
+    if (!meta) return;
+    meta.style.display = 'flex';
+    let buttons = '';
+    if (opts.sql)
+      buttons += `<button class="meta-btn sql" onclick="toggleSQL('${id}')">⌗ SQL</button>`;
+    if (opts.rows?.length)
+      buttons += `<button class="meta-btn data" onclick="toggleTable('${id}')">⊞ ${opts.rows.length} rows</button>`;
+    if (opts.highlightedNodes?.length)
+      buttons += `<button class="meta-btn hl" onclick="setHighlight(${JSON.stringify(opts.highlightedNodes)})">◎ Highlight ${opts.highlightedNodes.length}</button>`;
+    meta.innerHTML = buttons;
+    meta.dataset.sql = opts.sql ?? '';
+    meta.dataset.rows = JSON.stringify(opts.rows ?? []);
+  }
+  document.getElementById('chat-messages').scrollTop = 99999;
+}
+
+function toggleSQL(msgId) {
+  const meta = document.getElementById(`${msgId}-meta`);
+  const existing = document.getElementById(`${msgId}-sql`);
+  if (existing) { existing.remove(); return; }
+  const sql = meta.dataset.sql;
+  if (!sql) return;
+  const div = document.createElement('div');
+  div.id = `${msgId}-sql`;
+  div.className = 'sql-block';
+  div.textContent = sql;
+  meta.parentNode.insertBefore(div, meta.nextSibling);
+}
+
+function toggleTable(msgId) {
+  const meta = document.getElementById(`${msgId}-meta`);
+  const existing = document.getElementById(`${msgId}-table`);
+  if (existing) { existing.remove(); return; }
+  const rows = JSON.parse(meta.dataset.rows ?? '[]');
+  if (!rows.length) return;
+  const cols = Object.keys(rows[0]).slice(0, 6);
+  const wrap = document.createElement('div');
+  wrap.id = `${msgId}-table`;
+  wrap.className = 'data-table-wrap';
+  wrap.innerHTML = `<table class="data-table">
+    <thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+    <tbody>${rows.slice(0,15).map(r=>`<tr>${cols.map(c=>`<td title="${r[c]??''}">${r[c]??'—'}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table>${rows.length>15?`<div class="data-more">+${rows.length-15} more rows</div>`:''}`;
+  meta.parentNode.insertBefore(wrap, meta.nextSibling);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>

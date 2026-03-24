@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #080c14;
+  --bg-panel: #0d1221;
+  --bg-card: #111827;
+  --border: rgba(59, 130, 246, 0.15);
+  --border-hover: rgba(59, 130, 246, 0.4);
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  --accent: #3b82f6;
+  --accent-glow: rgba(59, 130, 246, 0.3);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(59, 130, 246, 0.3); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(59, 130, 246, 0.5); }
+
+/* Panel glassmorphism */
+.glass-panel {
+  background: rgba(13, 18, 33, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+}
+
+.glass-panel-bright {
+  background: rgba(17, 24, 39, 0.9);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* Glowing button */
+.btn-glow {
+  background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  transition: box-shadow 0.2s, transform 0.1s;
+}
+.btn-glow:hover {
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+  transform: translateY(-1px);
+}
+.btn-glow:active { transform: translateY(0); }
+
+/* Chat message animations */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-message { animation: fadeSlideIn 0.25s ease-out; }
+
+/* Cursor blink */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.cursor-blink::after {
+  content: '▋';
+  animation: blink 0.8s infinite;
+  color: var(--accent);
+  font-size: 0.85em;
+}
+
+/* Graph tooltip */
+.graph-tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: rgba(13, 18, 33, 0.95);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  backdrop-filter: blur(12px);
+  z-index: 1000;
+  max-width: 260px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+.graph-canvas {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.12), transparent 42%),
+    radial-gradient(circle at 82% 78%, rgba(139, 92, 246, 0.1), transparent 45%),
+    #080c14;
+}
+
+.graph-canvas canvas {
+  filter: saturate(1.08) contrast(1.05);
+}
+
+/* Node detail panel */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.node-detail-panel { animation: slideInRight 0.2s ease-out; }
+
+/* SQL code block */
+.sql-block {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  color: #93c5fd;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Legend pill */
+.legend-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.legend-pill:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.18); }
+.legend-pill.active {
+  border-color: currentColor;
+  background: rgba(255,255,255,0.12);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset;
+}
+
+/* Pulse dot */
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.5; }
+}
+.pulse-dot { animation: pulse 2s infinite; }
+
+/* Table */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.data-table th {
+  text-align: left;
+  padding: 5px 8px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+  white-space: nowrap;
+}
+.data-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.data-table tr:hover td { background: rgba(59, 130, 246, 0.05); }
