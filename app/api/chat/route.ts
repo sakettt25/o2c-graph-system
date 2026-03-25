@@ -7,6 +7,7 @@ import {
   getBillingItems,
   getDeliveries,
   getDeliveryItems,
+  getProductDescription,
   getSalesOrders,
   getJournalEntries,
   getPayments,
@@ -230,6 +231,50 @@ async function withLocalBillingTraceFallback<T>(
   }
 }
 
+async function buildRowsWithoutDb(message: string, sql: string): Promise<DataRow[] | null> {
+  const lowerMessage = message.toLowerCase();
+  const lowerSql = sql.toLowerCase();
+
+  const isProductBillingRanking =
+    (lowerMessage.includes('product') && lowerMessage.includes('billing') &&
+      (lowerMessage.includes('most') || lowerMessage.includes('top') || lowerMessage.includes('highest'))) ||
+    (lowerSql.includes('billing_document_items') && lowerSql.includes('group by') && lowerSql.includes('material'));
+
+  if (!isProductBillingRanking) return null;
+
+  const billingItems = await getBillingItems(10000);
+  const productToBillDocs = new Map<string, Set<string>>();
+
+  for (const item of billingItems) {
+    const productId = item.material;
+    const billingDocId = item.billingDocument;
+    if (!productId || !billingDocId) continue;
+
+    if (!productToBillDocs.has(productId)) {
+      productToBillDocs.set(productId, new Set());
+    }
+    productToBillDocs.get(productId)?.add(billingDocId);
+  }
+
+  const rows: DataRow[] = [];
+  for (const [product, billDocs] of productToBillDocs.entries()) {
+    const desc = await getProductDescription(product);
+    rows.push({
+      product,
+      productDescription: desc?.productDescription ?? product,
+      billingDocumentCount: String(billDocs.size),
+    });
+  }
+
+  rows.sort((a, b) => {
+    const aCount = Number(a.billingDocumentCount ?? '0');
+    const bCount = Number(b.billingDocumentCount ?? '0');
+    return bCount - aCount;
+  });
+
+  return rows.slice(0, 10);
+}
+
 function mapGeminiErrorToResponse(message: string): NextResponse | null {
   const lower = message.toLowerCase();
 
@@ -272,8 +317,14 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
 
 export async function POST(req: NextRequest) {
   try {
-    // Initialize database
-    await initDb();
+    // Initialize database (best effort; fallback path uses JSONL data loader)
+    let dbAvailable = true;
+    try {
+      await initDb();
+    } catch (dbErr) {
+      dbAvailable = false;
+      console.error('[API/chat] DB initialization failed, continuing with JSONL fallback:', dbErr);
+    }
 
     const { message, history = [] } = await req.json() as {
       message: string;
@@ -351,7 +402,23 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-      rows = queryDb<Record<string, string | null>>(classified.sql);
+      if (dbAvailable) {
+        rows = queryDb<Record<string, string | null>>(classified.sql);
+      } else {
+        const fallbackRows = await buildRowsWithoutDb(message, classified.sql);
+        if (fallbackRows) {
+          rows = fallbackRows;
+        } else {
+          return NextResponse.json({
+            type: 'error',
+            answer:
+              'Database engine is temporarily unavailable. Please try a product/billing ranking query or retry in a moment.',
+            sql: classified.sql,
+            rows: [],
+            highlightedNodes: [],
+          });
+        }
+      }
     } catch (err) {
       // Try billing flow trace as fallback
       const billingDocId = extractBillingFlowTraceDocumentId(message);
