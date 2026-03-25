@@ -12,6 +12,18 @@ export interface OfflineSQLResponse {
   message?: string;
 }
 
+const TABLE_ID_COLUMNS: Record<string, string[]> = {
+  sales_order_headers: ['salesOrder'],
+  billing_document_headers: ['billingDocument', 'accountingDocument', 'soldToParty'],
+  billing_document_items: ['billingDocument', 'referenceSdDocument'],
+  outbound_delivery_headers: ['deliveryDocument'],
+  outbound_delivery_items: ['deliveryDocument', 'referenceSdDocument'],
+  payments_accounts_receivable: ['accountingDocument', 'salesDocument', 'customer'],
+  journal_entry_items: ['accountingDocument', 'customer', 'clearingAccountingDocument'],
+  business_partners: ['customer', 'businessPartner'],
+  products: ['product'],
+};
+
 const SEMANTIC_RULES: Record<string, string> = {
   // Sales Order queries
   'sales order|order|so': 'sales_order_headers',
@@ -79,6 +91,39 @@ export function generateOfflineSQLFallback(
   userMessage: string
 ): OfflineSQLResponse {
   const lower = userMessage.toLowerCase();
+
+  // Linked journal/accounting lookup from a referenced document ID
+  const linkedJournalMatch = userMessage.match(/\b(\d{5,})\b/);
+  if (
+    linkedJournalMatch &&
+    (lower.includes('journal') || lower.includes('accounting')) &&
+    (lower.includes('linked') || lower.includes('link') || lower.includes('find'))
+  ) {
+    const docId = linkedJournalMatch[1];
+    return {
+      type: 'data',
+      sql: `
+        SELECT DISTINCT
+          bdh.billingDocument,
+          bdh.accountingDocument AS journalNumber,
+          je.postingDate,
+          je.accountingDocumentType
+        FROM billing_document_headers bdh
+        LEFT JOIN journal_entry_items je
+          ON je.accountingDocument = bdh.accountingDocument
+        LEFT JOIN billing_document_items bdi
+          ON bdi.billingDocument = bdh.billingDocument
+        LEFT JOIN outbound_delivery_items odi
+          ON odi.deliveryDocument = bdi.referenceSdDocument
+        WHERE bdh.billingDocument = '${docId}'
+           OR bdh.accountingDocument = '${docId}'
+           OR bdi.referenceSdDocument = '${docId}'
+           OR odi.referenceSdDocument = '${docId}'
+        LIMIT 20
+      `.trim(),
+      explanation: `Finding linked journal number for document ${docId}`,
+    };
+  }
 
   // High-priority business query: products with most billing documents
   if (
@@ -176,7 +221,7 @@ export function generateOfflineSQLFallback(
   // Handle specific document lookup
   if (docIds.length > 0) {
     const docId = docIds[0];
-    const idColumns = ['salesOrder', 'billingDocument', 'deliveryDocument', 'accountingDocument', 'customerId', 'partnerId'];
+    const idColumns = TABLE_ID_COLUMNS[table] ?? ['accountingDocument'];
     
     // Try common ID columns
     const conditions = idColumns.map(col => `${col} = '${docId}'`).join(' OR ');

@@ -240,39 +240,103 @@ async function buildRowsWithoutDb(message: string, sql: string): Promise<DataRow
       (lowerMessage.includes('most') || lowerMessage.includes('top') || lowerMessage.includes('highest'))) ||
     (lowerSql.includes('billing_document_items') && lowerSql.includes('group by') && lowerSql.includes('material'));
 
-  if (!isProductBillingRanking) return null;
+  if (isProductBillingRanking) {
+    const billingItems = await getBillingItems(10000);
+    const productToBillDocs = new Map<string, Set<string>>();
 
-  const billingItems = await getBillingItems(10000);
-  const productToBillDocs = new Map<string, Set<string>>();
+    for (const item of billingItems) {
+      const productId = item.material;
+      const billingDocId = item.billingDocument;
+      if (!productId || !billingDocId) continue;
 
-  for (const item of billingItems) {
-    const productId = item.material;
-    const billingDocId = item.billingDocument;
-    if (!productId || !billingDocId) continue;
-
-    if (!productToBillDocs.has(productId)) {
-      productToBillDocs.set(productId, new Set());
+      if (!productToBillDocs.has(productId)) {
+        productToBillDocs.set(productId, new Set());
+      }
+      productToBillDocs.get(productId)?.add(billingDocId);
     }
-    productToBillDocs.get(productId)?.add(billingDocId);
-  }
 
-  const rows: DataRow[] = [];
-  for (const [product, billDocs] of productToBillDocs.entries()) {
-    const desc = await getProductDescription(product);
-    rows.push({
-      product,
-      productDescription: desc?.productDescription ?? product,
-      billingDocumentCount: String(billDocs.size),
+    const rows: DataRow[] = [];
+    for (const [product, billDocs] of productToBillDocs.entries()) {
+      const desc = await getProductDescription(product);
+      rows.push({
+        product,
+        productDescription: desc?.productDescription ?? product,
+        billingDocumentCount: String(billDocs.size),
+      });
+    }
+
+    rows.sort((a, b) => {
+      const aCount = Number(a.billingDocumentCount ?? '0');
+      const bCount = Number(b.billingDocumentCount ?? '0');
+      return bCount - aCount;
     });
+
+    return rows.slice(0, 10);
   }
 
-  rows.sort((a, b) => {
-    const aCount = Number(a.billingDocumentCount ?? '0');
-    const bCount = Number(b.billingDocumentCount ?? '0');
-    return bCount - aCount;
-  });
+  const linkedJournalLookup =
+    (lowerMessage.includes('journal') || lowerMessage.includes('accounting')) &&
+    (lowerMessage.includes('linked') || lowerMessage.includes('link') || lowerMessage.includes('find'));
 
-  return rows.slice(0, 10);
+  if (linkedJournalLookup || (lowerSql.includes('journalnumber') && lowerSql.includes('billing_document_headers'))) {
+    const idMatch = message.match(/\b(\d{5,})\b/);
+    if (!idMatch) return [];
+
+    const targetId = idMatch[1];
+    const [billingHeaders, billingItems, deliveryItems, journalEntries] = await Promise.all([
+      getBillingDocuments(10000),
+      getBillingItems(10000),
+      getDeliveryItems(10000),
+      getJournalEntries(10000),
+    ]);
+
+    const candidateBillingIds = new Set<string>();
+
+    for (const bh of billingHeaders) {
+      if (bh.billingDocument === targetId || bh.accountingDocument === targetId) {
+        candidateBillingIds.add(bh.billingDocument);
+      }
+    }
+
+    for (const bi of billingItems) {
+      if (bi.referenceSdDocument === targetId || bi.billingDocument === targetId) {
+        candidateBillingIds.add(bi.billingDocument);
+      }
+    }
+
+    for (const di of deliveryItems) {
+      if (di.referenceSdDocument === targetId) {
+        for (const bi of billingItems) {
+          if (bi.referenceSdDocument === di.deliveryDocument) {
+            candidateBillingIds.add(bi.billingDocument);
+          }
+        }
+      }
+    }
+
+    const journalByAccounting = new Map<string, any>();
+    for (const je of journalEntries) {
+      if (je.accountingDocument && !journalByAccounting.has(je.accountingDocument)) {
+        journalByAccounting.set(je.accountingDocument, je);
+      }
+    }
+
+    const rows: DataRow[] = [];
+    for (const bh of billingHeaders) {
+      if (!candidateBillingIds.has(bh.billingDocument)) continue;
+      const je = bh.accountingDocument ? journalByAccounting.get(bh.accountingDocument) : null;
+      rows.push({
+        billingDocument: bh.billingDocument ?? null,
+        journalNumber: bh.accountingDocument ?? null,
+        postingDate: je?.postingDate ?? null,
+        accountingDocumentType: je?.accountingDocumentType ?? null,
+      });
+    }
+
+    return rows.slice(0, 20);
+  }
+
+  return null;
 }
 
 function mapGeminiErrorToResponse(message: string): NextResponse | null {
@@ -354,13 +418,18 @@ export async function POST(req: NextRequest) {
 
     // Handle guardrail / clarify responses
     if (classified.type === 'guardrail' || classified.type === 'clarify') {
-      return NextResponse.json({
-        type: classified.type,
-        answer: classified.message,
-        sql: null,
-        rows: [],
-        highlightedNodes: [],
-      });
+      const offlineFallback = generateOfflineSQLFallback(message);
+      if (offlineFallback.type === 'data' && offlineFallback.sql) {
+        classified = offlineFallback;
+      } else {
+        return NextResponse.json({
+          type: classified.type,
+          answer: classified.message,
+          sql: null,
+          rows: [],
+          highlightedNodes: [],
+        });
+      }
     }
 
     if (!classified.sql) {
