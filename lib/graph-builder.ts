@@ -18,13 +18,47 @@ import {
 
 type RawRecord = Record<string, string | null>;
 
+/**
+ * Sanitize raw record data to ensure all values are strings or null (React-safe)
+ * Converts objects, numbers, booleans, etc. to their string representation
+ */
+function sanitizeRecord(record: Record<string, any>): RawRecord {
+  const sanitized: RawRecord = {};
+  
+  for (const [key, value] of Object.entries(record)) {
+    if (value === null || value === undefined) {
+      sanitized[key] = null;
+    } else if (typeof value === 'string') {
+      sanitized[key] = value;
+    } else if (typeof value === 'boolean') {
+      sanitized[key] = value ? 'true' : 'false';
+    } else if (typeof value === 'number') {
+      sanitized[key] = String(value);
+    } else if (value instanceof Date) {
+      sanitized[key] = value.toISOString();
+    } else if (typeof value === 'object') {
+      // Convert objects (including arrays, dates with hours/minutes/seconds, etc.) to JSON string
+      try {
+        sanitized[key] = JSON.stringify(value);
+      } catch {
+        // Fallback if JSON.stringify fails
+        sanitized[key] = String(value);
+      }
+    } else {
+      sanitized[key] = String(value);
+    }
+  }
+  
+  return sanitized;
+}
+
 function makeNode(
   id: string,
   nodeType: NodeType,
   label: string,
-  data: RawRecord
+  data: Record<string, any>
 ): GraphNode {
-  return { id, nodeType, label, data };
+  return { id, nodeType, label, data: sanitizeRecord(data) };
 }
 
 export async function buildGraphDataRealAsync(limit = 200): Promise<GraphData> {
@@ -421,7 +455,7 @@ export async function getNodeDetailsAsync(nodeId: string): Promise<GraphNode | n
   }
 
   if (!row) return null;
-  return { id: nodeId, nodeType, label, data: row };
+  return { id: nodeId, nodeType, label, data: sanitizeRecord(row) };
 }
 
 /**
