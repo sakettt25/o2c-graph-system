@@ -20,6 +20,7 @@ export default function ForceGraph3D({ onNodeClick, highlightedNodes, activeFilt
   const threeRef = useRef<any>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [initialized, setInitialized] = useState(false);
@@ -31,13 +32,18 @@ export default function ForceGraph3D({ onNodeClick, highlightedNodes, activeFilt
 
   useEffect(() => {
     fetch('/api/graph')
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`API error: ${r.status}`);
+        return r.json();
+      })
       .then((data: GraphData) => {
         setGraphData(data);
         setLoading(false);
       })
       .catch((err) => {
-        console.error('Graph fetch error:', err);
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error('Graph fetch error:', errorMsg);
+        setError(errorMsg);
         setLoading(false);
       });
   }, []);
@@ -369,6 +375,21 @@ export default function ForceGraph3D({ onNodeClick, highlightedNodes, activeFilt
               <p className="text-slate-300 text-sm font-medium">Building Knowledge Graph</p>
               <p className="text-slate-600 text-xs">Processing SAP O2C entities...</p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#080c14] z-50">
+          <div className="text-center space-y-4 max-w-md px-4">
+            <div className="text-red-400 text-lg font-bold">Graph Loading Error</div>
+            <p className="text-slate-400 text-sm">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+            >
+              Retry
+            </button>
           </div>
         </div>
       )}
