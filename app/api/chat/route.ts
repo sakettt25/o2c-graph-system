@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { classifyAndGenerateSQL, generateNaturalLanguageAnswer, extractHighlightedNodes } from '@/lib/gemini';
 import { queryDb, initDb } from '@/lib/db';
+import {
+  getBillingDocuments,
+  getBillingItems,
+  getDeliveries,
+  getDeliveryItems,
+  getSalesOrders,
+  getJournalEntries,
+  getPayments,
+} from '@/lib/data-loader';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,204 +60,149 @@ function extractBillingFlowTraceDocumentId(message: string): string | null {
   return match?.[1] ?? null;
 }
 
-function buildLocalBillingFlowTrace(
+async function buildLocalBillingFlowTraceAsync(
   billingDocumentId: string
-): { answer: string; sql: string; rows: DataRow[]; highlightedNodes: string[] } | null {
-  const billingHeaders = queryDb<DataRow>(
-    'SELECT billingDocument, billingDocumentType, billingDocumentDate, totalNetAmount, transactionCurrency, accountingDocument, soldToParty, billingDocumentIsCancelled FROM billing_document_headers WHERE billingDocument = ?',
-    [billingDocumentId]
-  );
+): Promise<{ answer: string; sql: string; rows: DataRow[]; highlightedNodes: string[] } | null> {
+  try {
+    // Load all billing documents and find the one we need
+    const allBillingDocs = await getBillingDocuments(10000);
+    const billingHeader = allBillingDocs.find((b: any) => b.billingDocument === billingDocumentId);
+    
+    if (!billingHeader) {
+      return null;
+    }
 
-  if (!billingHeaders.length) {
-    return null;
-  }
+    // Load all necessary data
+    const [allBillingItems, allDeliveries, allDeliveryItems, allSalesOrders, allJournalEntries, allPayments] = 
+      await Promise.all([
+        getBillingItems(10000),
+        getDeliveries(10000),
+        getDeliveryItems(10000),
+        getSalesOrders(10000),
+        getJournalEntries(10000),
+        getPayments(10000),
+      ]);
 
-  const billingItems = queryDb<DataRow>(
-    'SELECT billingDocumentItem, material, billingQuantity, netAmount, referenceSdDocument, referenceSdDocumentItem FROM billing_document_items WHERE billingDocument = ?',
-    [billingDocumentId]
-  );
+    // Find related records
+    const billingItems = allBillingItems.filter((item: any) => item.billingDocument === billingDocumentId);
+    const deliveryIds = [...new Set(billingItems.map((item: any) => item.referenceSdDocument).filter(Boolean))];
+    
+    const deliveryHeaders = allDeliveries.filter((d: any) => deliveryIds.includes(d.deliveryDocument));
+    const deliveryItems = allDeliveryItems.filter((item: any) => deliveryIds.includes(item.deliveryDocument));
+    
+    const salesOrderIds = [...new Set(deliveryItems.map((item: any) => item.referenceSdDocument).filter(Boolean))];
+    const salesOrderHeaders = allSalesOrders.filter((so: any) => salesOrderIds.includes(so.salesOrder));
+    
+    const accountingDocumentId = billingHeader.accountingDocument;
+    const journalEntries = accountingDocumentId 
+      ? allJournalEntries.filter((je: any) => je.accountingDocument === accountingDocumentId)
+      : [];
+    const payments = accountingDocumentId 
+      ? allPayments.filter((p: any) => p.accountingDocument === accountingDocumentId)
+      : [];
 
-  const deliveryIds = uniqueValues(billingItems, 'referenceSdDocument');
+    // Build response rows
+    const rows: DataRow[] = [];
 
-  const deliveryHeaders: DataRow[] = [];
-  const deliveryItems: DataRow[] = [];
+    for (const so of salesOrderHeaders) {
+      rows.push({
+        step: 'SalesOrder',
+        id: so.salesOrder,
+        relatedId: so.soldToParty,
+        date: so.creationDate,
+        amount: String(so.totalNetAmount ?? ''),
+        currency: so.transactionCurrency,
+        status: so.overallDeliveryStatus,
+      });
+    }
 
-  for (const deliveryId of deliveryIds) {
-    deliveryHeaders.push(
-      ...queryDb<DataRow>(
-        'SELECT deliveryDocument, creationDate, actualGoodsMovementDate, shippingPoint, overallGoodsMovementStatus, overallPickingStatus FROM outbound_delivery_headers WHERE deliveryDocument = ?',
-        [deliveryId]
-      )
-    );
+    for (const delivery of deliveryHeaders) {
+      rows.push({
+        step: 'Delivery',
+        id: delivery.deliveryDocument,
+        relatedId: delivery.shippingPoint,
+        date: delivery.creationDate,
+        amount: null,
+        currency: null,
+        status: delivery.overallGoodsMovementStatus,
+      });
+    }
 
-    deliveryItems.push(
-      ...queryDb<DataRow>(
-        'SELECT deliveryDocument, deliveryDocumentItem, referenceSdDocument, referenceSdDocumentItem, plant, actualDeliveryQuantity FROM outbound_delivery_items WHERE deliveryDocument = ?',
-        [deliveryId]
-      )
-    );
-  }
-
-  const salesOrderIds = uniqueValues(deliveryItems, 'referenceSdDocument');
-
-  const salesOrderHeaders: DataRow[] = [];
-
-  for (const salesOrderId of salesOrderIds) {
-    salesOrderHeaders.push(
-      ...queryDb<DataRow>(
-        'SELECT salesOrder, soldToParty, creationDate, totalNetAmount, transactionCurrency, overallDeliveryStatus, overallOrdReltdBillgStatus FROM sales_order_headers WHERE salesOrder = ?',
-        [salesOrderId]
-      )
-    );
-  }
-
-  const accountingDocumentIds = uniqueValues(billingHeaders, 'accountingDocument');
-
-  const journalEntries: DataRow[] = [];
-  const payments: DataRow[] = [];
-
-  for (const accountingDocumentId of accountingDocumentIds) {
-    journalEntries.push(
-      ...queryDb<DataRow>(
-        'SELECT accountingDocument, accountingDocumentItem, postingDate, accountingDocumentType, glAccount, amountInTransactionCurrency, transactionCurrency, referenceDocument FROM journal_entry_items WHERE accountingDocument = ?',
-        [accountingDocumentId]
-      )
-    );
-
-    payments.push(
-      ...queryDb<DataRow>(
-        'SELECT accountingDocument, accountingDocumentItem, postingDate, clearingDate, amountInTransactionCurrency, transactionCurrency, customer FROM payments_accounts_receivable WHERE accountingDocument = ?',
-        [accountingDocumentId]
-      )
-    );
-  }
-
-  const rows: DataRow[] = [];
-
-  for (const salesOrderHeader of salesOrderHeaders) {
-    rows.push({
-      step: 'SalesOrder',
-      id: getValue(salesOrderHeader, 'salesOrder'),
-      relatedId: getValue(salesOrderHeader, 'soldToParty'),
-      date: getValue(salesOrderHeader, 'creationDate'),
-      amount: getValue(salesOrderHeader, 'totalNetAmount'),
-      currency: getValue(salesOrderHeader, 'transactionCurrency'),
-      status: getValue(salesOrderHeader, 'overallDeliveryStatus'),
-    });
-  }
-
-  for (const deliveryHeader of deliveryHeaders) {
-    rows.push({
-      step: 'Delivery',
-      id: getValue(deliveryHeader, 'deliveryDocument'),
-      relatedId: getValue(deliveryHeader, 'shippingPoint'),
-      date: getValue(deliveryHeader, 'creationDate'),
-      amount: null,
-      currency: null,
-      status: getValue(deliveryHeader, 'overallGoodsMovementStatus'),
-    });
-  }
-
-  for (const billingHeader of billingHeaders) {
     rows.push({
       step: 'BillingDocument',
-      id: getValue(billingHeader, 'billingDocument'),
-      relatedId: getValue(billingHeader, 'accountingDocument'),
-      date: getValue(billingHeader, 'billingDocumentDate'),
-      amount: getValue(billingHeader, 'totalNetAmount'),
-      currency: getValue(billingHeader, 'transactionCurrency'),
-      status: getValue(billingHeader, 'billingDocumentIsCancelled'),
+      id: billingHeader.billingDocument,
+      relatedId: billingHeader.accountingDocument || 'None',
+      date: billingHeader.billingDocumentDate,
+      amount: String(billingHeader.totalNetAmount ?? ''),
+      currency: billingHeader.transactionCurrency,
+      status: billingHeader.billingDocumentIsCancelled === 'true' ? 'Cancelled' : 'Active',
     });
+
+    for (const je of journalEntries) {
+      rows.push({
+        step: 'JournalEntry',
+        id: je.accountingDocument,
+        relatedId: je.glAccount,
+        date: je.postingDate,
+        amount: String(je.amountInTransactionCurrency ?? ''),
+        currency: je.transactionCurrency,
+        status: je.accountingDocumentType,
+      });
+    }
+
+    for (const payment of payments) {
+      rows.push({
+        step: 'Payment',
+        id: payment.accountingDocument,
+        relatedId: payment.customer,
+        date: payment.clearingDate,
+        amount: String(payment.amountInTransactionCurrency ?? ''),
+        currency: payment.transactionCurrency,
+        status: payment.postingDate,
+      });
+    }
+
+    const highlightedNodes = [
+      ...salesOrderIds.map((id) => `so_${id}`),
+      ...deliveryIds.map((id) => `del_${id}`),
+      `bill_${billingDocumentId}`,
+      ...(accountingDocumentId ? [`je_${accountingDocumentId}`, `pay_${accountingDocumentId}`] : []),
+    ];
+
+    const salesOrderText = salesOrderIds.length ? `SO ${salesOrderIds.join(', ')}` : 'No sales orders found';
+    const deliveryText = deliveryIds.length ? `DEL ${deliveryIds.join(', ')}` : 'No deliveries found';
+    const journalText = accountingDocumentId ? `JE ${accountingDocumentId}` : 'No journal entry found';
+    const paymentText = payments.length ? ` → PAY ${accountingDocumentId}` : '';
+
+    const answer = [
+      `Full O2C flow trace for billing document ${billingDocumentId}:`,
+      `Flow: ${salesOrderText} → ${deliveryText} → BILL ${billingDocumentId} → ${journalText}${paymentText}.`,
+      billingHeader.totalNetAmount && billingHeader.transactionCurrency
+        ? `Billing amount: ${billingHeader.totalNetAmount} ${billingHeader.transactionCurrency}.`
+        : 'Billing amount not available.',
+    ].join(' ');
+
+    const sql = [
+      '-- O2C flow trace from billing document',
+      'SELECT ... FROM billing_document_headers WHERE billingDocument = ?;',
+      'SELECT ... FROM billing_document_items WHERE billingDocument = ?;',
+      'SELECT ... FROM outbound_delivery_headers WHERE deliveryDocument IN (...);',
+      'SELECT ... FROM outbound_delivery_items WHERE deliveryDocument IN (...);',
+      'SELECT ... FROM sales_order_headers WHERE salesOrder IN (...);',
+      'SELECT ... FROM journal_entry_items WHERE accountingDocument = ?;',
+      'SELECT ... FROM payments_accounts_receivable WHERE accountingDocument = ?;',
+    ].join('\n');
+
+    return { answer, sql, rows, highlightedNodes };
+  } catch (err) {
+    console.error('[API/chat] Error building billing flow trace:', err);
+    return null;
   }
-
-  for (const journalEntry of journalEntries) {
-    rows.push({
-      step: 'JournalEntry',
-      id: getValue(journalEntry, 'accountingDocument'),
-      relatedId: getValue(journalEntry, 'glAccount'),
-      date: getValue(journalEntry, 'postingDate'),
-      amount: getValue(journalEntry, 'amountInTransactionCurrency'),
-      currency: getValue(journalEntry, 'transactionCurrency'),
-      status: getValue(journalEntry, 'accountingDocumentType'),
-    });
-  }
-
-  for (const payment of payments) {
-    rows.push({
-      step: 'Payment',
-      id: getValue(payment, 'accountingDocument'),
-      relatedId: getValue(payment, 'customer'),
-      date: getValue(payment, 'clearingDate'),
-      amount: getValue(payment, 'amountInTransactionCurrency'),
-      currency: getValue(payment, 'transactionCurrency'),
-      status: getValue(payment, 'postingDate'),
-    });
-  }
-
-  const highlightedNodes = [
-    ...salesOrderIds.map((id) => `so_${id}`),
-    ...deliveryIds.map((id) => `del_${id}`),
-    `bill_${billingDocumentId}`,
-    ...accountingDocumentIds.map((id) => `je_${id}`),
-    ...accountingDocumentIds.map((id) => `pay_${id}`),
-  ];
-
-  const salesOrderText = salesOrderIds.length ? `SO ${salesOrderIds.join(', ')}` : 'SO not found';
-  const deliveryText = deliveryIds.length ? `DEL ${deliveryIds.join(', ')}` : 'Delivery not found';
-  const journalText = accountingDocumentIds.length
-    ? `JE ${accountingDocumentIds.join(', ')}`
-    : 'JE not found';
-  const paymentText = payments.length ? ` → PAY ${accountingDocumentIds.join(', ')}` : '';
-
-  const billingAmount = getValue(billingHeaders[0], 'totalNetAmount');
-  const billingCurrency = getValue(billingHeaders[0], 'transactionCurrency');
-
-  const answer = [
-    `Dodge AI is unavailable, so I used local SQL fallback for billing document ${billingDocumentId}.`,
-    `Flow: ${salesOrderText} → ${deliveryText} → BILL ${billingDocumentId} → ${journalText}${paymentText}.`,
-    billingAmount && billingCurrency
-      ? `Billing amount: ${billingAmount} ${billingCurrency}.`
-      : 'Billing amount not available.',
-  ].join(' ');
-
-  const sql = [
-    '-- local fallback: billing trace',
-    'SELECT ... FROM billing_document_headers WHERE billingDocument = ?;',
-    'SELECT ... FROM billing_document_items WHERE billingDocument = ?;',
-    'SELECT ... FROM outbound_delivery_headers WHERE deliveryDocument = ?;',
-    'SELECT ... FROM outbound_delivery_items WHERE deliveryDocument = ?;',
-    'SELECT ... FROM sales_order_headers WHERE salesOrder = ?;',
-    'SELECT ... FROM journal_entry_items WHERE accountingDocument = ?;',
-    'SELECT ... FROM payments_accounts_receivable WHERE accountingDocument = ?;',
-  ].join('\n');
-
-  return { answer, sql, rows, highlightedNodes };
 }
 
 function tryLocalBillingTraceFallback(message: string): Response | null {
-  const billingDocumentId = extractBillingFlowTraceDocumentId(message);
-  if (!billingDocumentId) return null;
-
-  const traceResult = buildLocalBillingFlowTrace(billingDocumentId);
-  if (!traceResult) {
-    return NextResponse.json(
-      {
-        type: 'error',
-        answer: `Could not find billing document ${billingDocumentId} in local data.`,
-        sql: null,
-        rows: [],
-        highlightedNodes: [],
-      },
-      { status: 404 }
-    );
-  }
-
-  return toTextResponse(
-    traceResult.answer,
-    traceResult.sql,
-    traceResult.rows,
-    traceResult.highlightedNodes
-  );
+  // Note: This is now deprecated. Use buildLocalBillingFlowTraceAsync instead
+  return null;
 }
 
 async function withLocalBillingTraceFallback<T>(
@@ -258,8 +212,19 @@ async function withLocalBillingTraceFallback<T>(
   try {
     return await action();
   } catch (err) {
-    const fallbackResponse = tryLocalBillingTraceFallback(message);
-    if (fallbackResponse) return fallbackResponse;
+    // Try to extract billing document ID and trace the flow
+    const billingDocId = extractBillingFlowTraceDocumentId(message);
+    if (billingDocId) {
+      const fallbackResponse = await buildLocalBillingFlowTraceAsync(billingDocId);
+      if (fallbackResponse) {
+        return toTextResponse(
+          fallbackResponse.answer,
+          fallbackResponse.sql,
+          fallbackResponse.rows,
+          fallbackResponse.highlightedNodes
+        );
+      }
+    }
     throw err;
   }
 }
@@ -323,8 +288,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (!classified.sql) {
-      const fallbackResponse = tryLocalBillingTraceFallback(message);
-      if (fallbackResponse) return fallbackResponse;
+      const billingDocId = extractBillingFlowTraceDocumentId(message);
+      if (billingDocId) {
+        const fallbackResponse = await buildLocalBillingFlowTraceAsync(billingDocId);
+        if (fallbackResponse) {
+          return toTextResponse(
+            fallbackResponse.answer,
+            fallbackResponse.sql,
+            fallbackResponse.rows,
+            fallbackResponse.highlightedNodes
+          );
+        }
+      }
       return NextResponse.json({
         type: 'error',
         answer: 'Could not generate a query for this question. Please rephrase.',
@@ -353,8 +328,19 @@ export async function POST(req: NextRequest) {
     try {
       rows = queryDb<Record<string, string | null>>(classified.sql);
     } catch (err) {
-      const fallbackResponse = tryLocalBillingTraceFallback(message);
-      if (fallbackResponse) return fallbackResponse;
+      // Try billing flow trace as fallback
+      const billingDocId = extractBillingFlowTraceDocumentId(message);
+      if (billingDocId) {
+        const fallbackResponse = await buildLocalBillingFlowTraceAsync(billingDocId);
+        if (fallbackResponse) {
+          return toTextResponse(
+            fallbackResponse.answer,
+            fallbackResponse.sql,
+            fallbackResponse.rows,
+            fallbackResponse.highlightedNodes
+          );
+        }
+      }
       sqlError = err instanceof Error ? err.message : String(err);
       // Try to fix simple errors and retry with a fallback
       return NextResponse.json({
