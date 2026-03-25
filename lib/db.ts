@@ -14,7 +14,22 @@ async function initDb(): Promise<SqlJsDatabase> {
 
   initPromise = (async () => {
     try {
-      const SQL = await initSqlJs();
+      console.log('[DB] Initializing SQL.js...');
+      // For Next.js compatibility, use a slightly different initialization
+      const SQL = await initSqlJs({
+        locateFile: (filename: string) => {
+          // Handle both Node.js and browser environments
+          if (typeof window === 'undefined') {
+            // Node.js environment
+            return path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', filename);
+          } else {
+            // Browser environment
+            return `/sql.js/${filename}`;
+          }
+        }
+      });
+      console.log('[DB] SQL.js initialized successfully');
+      
       const dbPath = process.env.DB_PATH 
         ? path.resolve(process.env.DB_PATH)
         : path.join(process.cwd(), 'data', 'o2c.db');

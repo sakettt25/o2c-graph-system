@@ -1,0 +1,133 @@
+
+> o2c-graph-system@1.0.0 dev
+> next dev
+
+  Γû▓ Next.js 14.2.5
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+
+ Γ£ô Starting...
+ Γ£ô Ready in 3.9s
+ Γ£ô Compiled /api/graph in 507ms (62 modules)
+[API/graph] Request received
+[API/graph] CWD: C:\Users\KIIT0001\Downloads\o2c-graph-system
+[API/graph] Expected DB path: C:\Users\KIIT0001\Downloads\o2c-graph-system\data\o2c.db
+[DB] Initializing SQL.js...
+[DB] Database initialization failed: Cannot set properties of undefined (setting 'exports')
+[DB] Stack: TypeError: Cannot set properties of undefined (setting 'exports')
+    at eval (webpack-internal:///(rsc)/./node_modules/sql.js/dist/sql-wasm.js:97:308)
+    at new Promise (<anonymous>)
+    at initSqlJs (webpack-internal:///(rsc)/./node_modules/sql.js/dist/sql-wasm.js:23:24)
+    at eval (webpack-internal:///(rsc)/./lib/db.ts:30:76)
+    at initDb (webpack-internal:///(rsc)/./lib/db.ts:56:7)
+    at GET (webpack-internal:///(rsc)/./app/api/graph/route.ts:22:62)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:55044
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\trace\tracer.js:140:36
+    at NoopContextManager.with (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:7062)
+    at ContextAPI.with (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:518)
+    at NoopTracer.startActiveSpan (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:18093)
+    at ProxyTracer.startActiveSpan (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:18854)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\trace\tracer.js:122:103
+    at NoopContextManager.with (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:7062)
+    at ContextAPI.with (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:518)
+    at NextTracerImpl.trace (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\trace\tracer.js:122:28)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:47853
+    at AsyncLocalStorage.run (node:async_hooks:346:14)
+    at Object.wrap (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:40244)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46429
+    at AsyncLocalStorage.run (node:async_hooks:346:14)
+    at Object.wrap (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:37583)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46391
+    at AsyncLocalStorage.run (node:async_hooks:346:14)
+    at ek.execute (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:45838)
+    at ek.handle (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:56303)
+    at doRender (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1377:60)
+    at cacheEntry.responseCache.get.routeKind (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1599:34)
+    at ResponseCache.get (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\response-cache\index.js:49:26)
+    at DevServer.renderToResponseWithComponentsImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1507:53)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1002:121
+    at NextTracerImpl.trace (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\trace\tracer.js:105:20)
+    at DevServer.renderToResponseWithComponents (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1002:41)
+    at DevServer.renderPageComponent (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1931:35)
+    at async DevServer.renderToResponseImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1969:32)
+    at async DevServer.pipeImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:920:25)
+    at async NextNodeServer.handleCatchallRenderRequest (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:816:17)
+    at async C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\router-server.js:174:21)
+    at async handleRequest (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\router-server.js:353:24)
+    at async requestHandlerImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\router-server.js:377:13)
+    at async Server.requestListener (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\start-server.js:141:13)
+[API/graph] Real database failed, using demo fallback: Cannot set properties of undefined (setting 'exports')
+[API/graph] Stack: TypeError: Cannot set properties of undefined (setting 'exports')
+    at eval (webpack-internal:///(rsc)/./node_modules/sql.js/dist/sql-wasm.js:97:308)
+    at new Promise (<anonymous>)
+    at initSqlJs (webpack-internal:///(rsc)/./node_modules/sql.js/dist/sql-wasm.js:23:24)
+    at eval (webpack-internal:///(rsc)/./lib/db.ts:30:76)
+    at initDb (webpack-internal:///(rsc)/./lib/db.ts:56:7)
+    at GET (webpack-internal:///(rsc)/./app/api/graph/route.ts:22:62)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:55044
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\trace\tracer.js:140:36
+    at NoopContextManager.with (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:7062)
+    at ContextAPI.with (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:518)
+    at NoopTracer.startActiveSpan (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:18093)
+    at ProxyTracer.startActiveSpan (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:18854)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\trace\tracer.js:122:103
+    at NoopContextManager.with (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:7062)
+    at ContextAPI.with (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\@opentelemetry\api\index.js:1:518)
+    at NextTracerImpl.trace (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\trace\tracer.js:122:28)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:47853
+    at AsyncLocalStorage.run (node:async_hooks:346:14)
+    at Object.wrap (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:40244)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46429
+    at AsyncLocalStorage.run (node:async_hooks:346:14)
+    at Object.wrap (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:37583)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46391
+    at AsyncLocalStorage.run (node:async_hooks:346:14)
+    at ek.execute (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:45838)
+    at ek.handle (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:56303)
+    at doRender (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1377:60)
+    at cacheEntry.responseCache.get.routeKind (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1599:34)
+    at ResponseCache.get (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\response-cache\index.js:49:26)
+    at DevServer.renderToResponseWithComponentsImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1507:53)
+    at C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1002:121
+    at NextTracerImpl.trace (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\trace\tracer.js:105:20)
+    at DevServer.renderToResponseWithComponents (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1002:41)
+    at DevServer.renderPageComponent (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1931:35)
+    at async DevServer.renderToResponseImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1969:32)
+    at async DevServer.pipeImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:920:25)
+    at async NextNodeServer.handleCatchallRenderRequest (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:816:17)
+    at async C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\router-server.js:174:21)
+    at async handleRequest (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\router-server.js:353:24)
+    at async requestHandlerImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\router-server.js:377:13)
+    at async Server.requestListener (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\start-server.js:141:13)
+[buildGraphDataSafe] Database unavailable, using demo data: Error: Database not initialized. Call initDb() first.
+    at queryDb (webpack-internal:///(rsc)/./lib/db.ts:61:15)
+    at buildGraphData (webpack-internal:///(rsc)/./lib/graph-builder.ts:39:67)
+    at buildGraphDataSafe (webpack-internal:///(rsc)/./lib/graph-builder.ts:559:16)
+    at GET (webpack-internal:///(rsc)/./app/api/graph/route.ts:33:97)
+    at async C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:55038
+    at async ek.execute (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:45808)
+    at async ek.handle (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:56292)
+    at async doRender (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1377:42)
+    at async cacheEntry.responseCache.get.routeKind (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1599:28)
+    at async DevServer.renderToResponseWithComponentsImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1507:28)
+    at async DevServer.renderPageComponent (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1931:24)
+    at async DevServer.renderToResponseImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:1969:32)
+    at async DevServer.pipeImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:920:25)
+    at async NextNodeServer.handleCatchallRenderRequest (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\base-server.js:816:17)
+    at async C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\router-server.js:174:21)
+    at async handleRequest (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\router-server.js:353:24)
+    at async requestHandlerImpl (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\router-server.js:377:13)
+    at async Server.requestListener (C:\Users\KIIT0001\Downloads\o2c-graph-system\node_modules\next\dist\server\lib\start-server.js:141:13)
+ GET /api/graph 200 in 746ms
