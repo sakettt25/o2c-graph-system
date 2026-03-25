@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
-import { queryDb } from '@/lib/db';
+import { queryDb, initDb } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    // Initialize database
+    await initDb();
+
     const stats = {
       salesOrders: queryDb<{ cnt: number }>('SELECT COUNT(*) as cnt FROM sales_order_headers')[0]?.cnt ?? 0,
       billingDocuments: queryDb<{ cnt: number }>('SELECT COUNT(*) as cnt FROM billing_document_headers WHERE billingDocumentIsCancelled != \'true\'')[0]?.cnt ?? 0,

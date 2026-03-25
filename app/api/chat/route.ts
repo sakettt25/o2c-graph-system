@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { classifyAndGenerateSQL, generateNaturalLanguageAnswer, extractHighlightedNodes } from '@/lib/gemini';
-import { queryDb } from '@/lib/db';
+import { queryDb, initDb } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -292,6 +292,9 @@ function mapGeminiErrorToResponse(message: string): NextResponse | null {
 
 export async function POST(req: NextRequest) {
   try {
+    // Initialize database
+    await initDb();
+
     const { message, history = [] } = await req.json() as {
       message: string;
       history: Array<{ role: string; content: string }>;
@@ -367,8 +370,9 @@ export async function POST(req: NextRequest) {
     const highlightedNodes = extractHighlightedNodes(rows);
 
     // Step 4: Stream natural language answer
+    const sql = classified.sql || '';
     const streamOrResponse = await withLocalBillingTraceFallback(message, () =>
-      generateNaturalLanguageAnswer(message, classified.sql, rows, history)
+      generateNaturalLanguageAnswer(message, sql, rows, history)
     );
     if (streamOrResponse instanceof Response) return streamOrResponse;
     const stream = streamOrResponse;

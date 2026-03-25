@@ -50,3 +50,5 @@ next-env.d.ts
 .cache/
 .turbo/
 .eslintcache
+
+.vercel

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getNodeDetails } from '@/lib/graph-builder';
+import { initDb } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,9 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Initialize database
+    await initDb();
+
     const decoded = decodeURIComponent(params.id);
     const node = getNodeDetails(decoded);
     if (!node) {

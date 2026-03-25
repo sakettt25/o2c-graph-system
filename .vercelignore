@@ -1,0 +1,17 @@
+node_modules
+.git
+.env.local
+README.md
+FEATURE_IMPLEMENTATION.md
+FINAL_SUMMARY.md
+QUICK_REFERENCE.md
+REQUIREMENTS_CHECKLIST.md
+SECURITY_INCIDENT.md
+SUBMISSION_GUIDE.md
+VERCEL_DEPLOYMENT.md
+VERCEL_ENV_SETUP.md
+VERCEL_PLANS.md
+ai-sessions
+scripts
+sap-o2c-data
+.next/cache

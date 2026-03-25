@@ -1,32 +1,63 @@
-import Database from 'better-sqlite3';
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import path from 'path';
+import { readFileSync } from 'fs';
 
-let db: Database.Database | null = null;
+let db: SqlJsDatabase | null = null;
+let initPromise: Promise<SqlJsDatabase> | null = null;
 
-export function getDb(): Database.Database {
-  if (!db) {
-    const dbPath = process.env.DB_PATH 
-      ? path.resolve(process.env.DB_PATH)
-      : path.join(process.cwd(), 'data', 'o2c.db');
-    db = new Database(dbPath, { readonly: true });
-    db.pragma('cache_size = 10000');
-  }
-  return db;
+async function initDb(): Promise<SqlJsDatabase> {
+  if (db) return db;
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    try {
+      const SQL = await initSqlJs();
+      const dbPath = process.env.DB_PATH 
+        ? path.resolve(process.env.DB_PATH)
+        : path.join(process.cwd(), 'data', 'o2c.db');
+      
+      const FileBuffer = readFileSync(dbPath);
+      db = new SQL.Database(FileBuffer);
+      return db;
+    } catch (err) {
+      console.error('Failed to initialize database:', err);
+      throw err;
+    }
+  })();
+
+  return initPromise;
 }
 
 export function queryDb<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = []
 ): T[] {
+  if (!db) {
+    throw new Error('Database not initialized. Call initDb() first.');
+  }
+  
   try {
-    const database = getDb();
-    const stmt = database.prepare(sql);
-    return stmt.all(...params) as T[];
+    const stmt = db.prepare(sql);
+    if (params && params.length > 0) {
+      stmt.bind(params as Parameters<typeof stmt.bind>[0]);
+    }
+    
+    const results: T[] = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as T;
+      results.push(row);
+    }
+    stmt.free();
+    
+    return results;
   } catch (err) {
     console.error('DB Query Error:', err, '\nSQL:', sql);
     throw err;
   }
 }
+
+// Export initDb for initialization
+export { initDb };
 
 export function queryDbOne<T = Record<string, unknown>>(
   sql: string,

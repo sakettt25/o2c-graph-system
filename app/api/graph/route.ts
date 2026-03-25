@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { buildGraphData } from '@/lib/graph-builder';
+import { initDb } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    // Initialize database
+    await initDb();
+
     const graphData = buildGraphData(200);
     return NextResponse.json(graphData);
   } catch (err) {
