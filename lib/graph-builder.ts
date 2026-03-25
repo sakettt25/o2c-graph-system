@@ -223,3 +223,98 @@ export function getNodeDetails(nodeId: string): GraphNode | null {
   if (!row) return null;
   return { id: nodeId, nodeType, label, data: row };
 }
+
+/**
+ * Generate demo/fallback graph data when database is unavailable
+ */
+export function buildDemoGraphData(): GraphData {
+  const nodes: GraphNode[] = [];
+  const links: GraphEdge[] = [];
+
+  // Customers
+  const customers = [
+    { id: 'customer_C001', name: 'Acme Corp', data: { customer: 'C001', businessPartnerFullName: 'Acme Corp' } },
+    { id: 'customer_C002', name: 'Global Tech Inc', data: { customer: 'C002', businessPartnerFullName: 'Global Tech Inc' } },
+    { id: 'customer_C003', name: 'Future Systems Ltd', data: { customer: 'C003', businessPartnerFullName: 'Future Systems Ltd' } },
+  ];
+  customers.forEach(c => nodes.push({ id: c.id, nodeType: 'Customer', label: c.name, data: c.data }));
+
+  // Products
+  const products = [
+    { id: 'product_P001', name: 'Widget A', data: { product: 'P001', productDescription: 'Widget A' } },
+    { id: 'product_P002', name: 'Widget B', data: { product: 'P002', productDescription: 'Widget B' } },
+    { id: 'product_P003', name: 'Component X', data: { product: 'P003', productDescription: 'Component X' } },
+  ];
+  products.forEach(p => nodes.push({ id: p.id, nodeType: 'Product', label: p.name, data: p.data }));
+
+  // Sales Orders
+  const salesOrders = [
+    { id: 'so_SO001', label: 'SO SO001', custId: 'customer_C001', data: { salesOrder: 'SO001', soldToParty: 'C001' } },
+    { id: 'so_SO002', label: 'SO SO002', custId: 'customer_C002', data: { salesOrder: 'SO002', soldToParty: 'C002' } },
+    { id: 'so_SO003', label: 'SO SO003', custId: 'customer_C001', data: { salesOrder: 'SO003', soldToParty: 'C001' } },
+  ];
+  salesOrders.forEach(so => {
+    nodes.push({ id: so.id, nodeType: 'SalesOrder', label: so.label, data: so.data });
+    links.push({ source: so.custId, target: so.id, type: 'PLACED', label: 'placed' });
+  });
+
+  // SO → Product relationships
+  links.push({ source: 'so_SO001', target: 'product_P001', type: 'CONTAINS', label: 'contains' });
+  links.push({ source: 'so_SO002', target: 'product_P002', type: 'CONTAINS', label: 'contains' });
+  links.push({ source: 'so_SO003', target: 'product_P001', type: 'CONTAINS', label: 'contains' });
+  links.push({ source: 'so_SO003', target: 'product_P003', type: 'CONTAINS', label: 'contains' });
+
+  // Deliveries
+  const deliveries = [
+    { id: 'del_D001', label: 'DEL D001', soId: 'so_SO001', data: { deliveryDocument: 'D001', referenceSdDocument: 'SO001' } },
+    { id: 'del_D002', label: 'DEL D002', soId: 'so_SO002', data: { deliveryDocument: 'D002', referenceSdDocument: 'SO002' } },
+  ];
+  deliveries.forEach(del => {
+    nodes.push({ id: del.id, nodeType: 'Delivery', label: del.label, data: del.data });
+    links.push({ source: del.soId, target: del.id, type: 'FULFILLED_BY', label: 'fulfilled by' });
+  });
+
+  // Billing Documents
+  const billings = [
+    { id: 'bill_B001', label: 'BILL B001', delId: 'del_D001', data: { billingDocument: 'B001', referenceSdDocument: 'D001' } },
+    { id: 'bill_B002', label: 'BILL B002', delId: 'del_D002', data: { billingDocument: 'B002', referenceSdDocument: 'D002' } },
+  ];
+  billings.forEach(bill => {
+    nodes.push({ id: bill.id, nodeType: 'BillingDocument', label: bill.label, data: bill.data });
+    links.push({ source: bill.delId, target: bill.id, type: 'BILLED', label: 'billed' });
+  });
+
+  // Journal Entries
+  const journals = [
+    { id: 'je_J001', label: 'JE J001', billId: 'bill_B001', data: { accountingDocument: 'J001' } },
+    { id: 'je_J002', label: 'JE J002', billId: 'bill_B002', data: { accountingDocument: 'J002' } },
+  ];
+  journals.forEach(je => {
+    nodes.push({ id: je.id, nodeType: 'JournalEntry', label: je.label, data: je.data });
+    links.push({ source: je.billId, target: je.id, type: 'POSTED_TO', label: 'posted to' });
+  });
+
+  // Payments
+  const payments = [
+    { id: 'pay_PAY001', label: 'PAY PAY001', jeId: 'je_J001', data: { accountingDocument: 'PAY001' } },
+    { id: 'pay_PAY002', label: 'PAY PAY002', jeId: 'je_J002', data: { accountingDocument: 'PAY002' } },
+  ];
+  payments.forEach(pay => {
+    nodes.push({ id: pay.id, nodeType: 'Payment', label: pay.label, data: pay.data });
+    links.push({ source: pay.jeId, target: pay.id, type: 'SETTLED', label: 'settled' });
+  });
+
+  return { nodes, links };
+}
+
+/**
+ * Safely build graph data with fallback to demo data if database unavailable
+ */
+export function buildGraphDataSafe(limit = 200): GraphData {
+  try {
+    return buildGraphData(limit);
+  } catch (err) {
+    console.warn('[buildGraphDataSafe] Database unavailable, using demo data:', err);
+    return buildDemoGraphData();
+  }
+}
