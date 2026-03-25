@@ -13,6 +13,5 @@ VERCEL_ENV_SETUP.md
 VERCEL_PLANS.md
 ai-sessions
 scripts
-sap-o2c-data
 .next/cache
 /*.md
