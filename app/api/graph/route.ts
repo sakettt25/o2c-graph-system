@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { buildGraphData } from '@/lib/graph-builder';
+import { buildGraphData, buildGraphDataSafe } from '@/lib/graph-builder';
 import { initDb } from '@/lib/db';
 import { join } from 'path';
 
@@ -21,15 +21,14 @@ export async function GET() {
     return NextResponse.json(graphData);
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error('[API/graph] Critical error - database required:', errorMsg);
+    console.error('[API/graph] Real database failed, using demo fallback:', errorMsg);
     console.error('[API/graph] Stack:', err instanceof Error ? err.stack : 'N/A');
-    return NextResponse.json(
-      { 
-        error: `Database error: ${errorMsg}. The application requires the database file to be deployed.`,
-        cwd: process.cwd(),
-        env: process.env.DB_PATH ? 'custom DB_PATH set' : 'using default path'
-      },
-      { status: 500 }
-    );
+    
+    // Fallback to demo data with warning
+    const graphData = buildGraphDataSafe(200);
+    return NextResponse.json({
+      ...graphData,
+      _warning: 'Using demo data - real database file not accessible. Expected 200+ nodes but showing 18 demo nodes.'
+    });
   }
 }
