@@ -1,6 +1,7 @@
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import path from 'path';
 import { readFile } from 'fs/promises';
+import { existsSync } from 'fs';
 
 let db: SqlJsDatabase | null = null;
 let initPromise: Promise<SqlJsDatabase> | null = null;
@@ -19,13 +20,19 @@ async function initDb(): Promise<SqlJsDatabase> {
         : path.join(process.cwd(), 'data', 'o2c.db');
       
       console.log('[DB] Initializing database from:', dbPath);
+      console.log('[DB] CWD:', process.cwd());
+      console.log('[DB] File exists:', existsSync(dbPath));
       
       const fileBuffer = await readFile(dbPath);
+      console.log('[DB] File read successfully, size:', fileBuffer.length, 'bytes');
+      
       db = new SQL.Database(fileBuffer);
-      console.log('[DB] Database initialized successfully with', db.exec('SELECT COUNT(*) as tableCount FROM sqlite_master WHERE type="table"')[0]?.values[0]?.[0] || 0, 'tables');
+      const tableCount = db.exec('SELECT COUNT(*) as count FROM sqlite_master WHERE type="table"')[0]?.values[0]?.[0] || 0;
+      console.log('[DB] Database initialized successfully with', tableCount, 'tables');
       return db;
     } catch (err) {
-      console.error('[DB] Database initialization failed:', err);
+      console.error('[DB] Database initialization failed:', err instanceof Error ? err.message : String(err));
+      if (err instanceof Error) console.error('[DB] Stack:', err.stack);
       initError = err as Error;
       throw err;
     }
