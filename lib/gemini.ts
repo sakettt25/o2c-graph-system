@@ -2,12 +2,25 @@ import { DB_SCHEMA } from './types';
 import { parseSemanticContext, generateSemanticSQLHints, expandSemanticRelationships } from './semantic-search';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? '';
+
+function normalizeModel(model?: string): string | undefined {
+  if (!model) return undefined;
+  const trimmed = model.trim();
+  if (!trimmed) return undefined;
+
+  if (trimmed === 'gemini-2.0-flash') {
+    return 'gemini-2.5-flash';
+  }
+
+  return trimmed;
+}
+
 const MODEL_CANDIDATES = Array.from(new Set([
-  process.env.GEMINI_MODEL,
+  normalizeModel(process.env.GEMINI_MODEL),
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
   'gemini-flash-latest',
   'gemini-flash-lite-latest',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
   'gemini-1.5-flash',
   'gemini-1.5-flash-latest',
 ].filter((model): model is string => Boolean(model))));
