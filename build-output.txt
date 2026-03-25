@@ -1,0 +1,33 @@
+
+> o2c-graph-system@1.0.0 build
+> next build
+
+  Γû▓ Next.js 14.2.5
+  - Environments: .env.local, .env.production
+
+   Creating an optimized production build ...
+Failed to compile.
+
+./lib/data-loader.ts
+Error: 
+  x 'import', and 'export' cannot be used outside of module code
+     ,-[C:\Users\KIIT0001\Downloads\o2c-graph-system\lib\data-loader.ts:139:1]
+ 139 |   return loadingPromise;
+ 140 | }
+ 141 | 
+ 142 | export async function getData(): Promise<DataCache> {
+     : ^^^^^^
+ 143 |   return initializeData();
+ 144 | }
+ 144 | 
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./lib/data-loader.ts
+./app/api/summary/route.ts
+
+
+> Build failed because of webpack errors

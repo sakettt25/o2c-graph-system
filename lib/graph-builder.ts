@@ -1,5 +1,20 @@
 import { queryDb } from './db';
 import { GraphData, GraphNode, GraphEdge, NodeType } from './types';
+import {
+  getBusinessPartners,
+  getSalesOrders,
+  getSalesOrderItems,
+  getDeliveries,
+  getDeliveryItems,
+  getBillingDocuments,
+  getBillingItems,
+  getJournalEntries,
+  getPayments,
+  getProducts,
+  getBusinessPartner,
+  getProduct,
+  getProductDescription,
+} from './data-loader';
 
 type RawRecord = Record<string, string | null>;
 
@@ -10,6 +25,140 @@ function makeNode(
   data: RawRecord
 ): GraphNode {
   return { id, nodeType, label, data };
+}
+
+export async function buildGraphDataRealAsync(limit = 200): Promise<GraphData> {
+  const nodes: GraphNode[] = [];
+  const links: GraphEdge[] = [];
+  const nodeSet = new Set<string>();
+
+  const addNode = (n: GraphNode) => {
+    if (!nodeSet.has(n.id)) {
+      nodeSet.add(n.id);
+      nodes.push(n);
+    }
+  };
+
+  const addEdge = (source: string, target: string, type: string, label: string) => {
+    if (nodeSet.has(source) && nodeSet.has(target)) {
+      links.push({ source, target, type, label });
+    }
+  };
+
+  try {
+    // --- Business Partners / Customers ---
+    const customers = await getBusinessPartners();
+    for (const c of customers.slice(0, 50)) {
+      const id = `customer_${c.customer ?? c.businessPartner}`;
+      addNode(makeNode(id, 'Customer', c.businessPartnerFullName ?? c.businessPartnerName ?? `Customer ${c.customer}`, c));
+    }
+
+    // --- Sales Orders ---
+    const salesOrders = await getSalesOrders(limit);
+    for (const so of salesOrders) {
+      const id = `so_${so.salesOrder}`;
+      addNode(makeNode(id, 'SalesOrder', `SO ${so.salesOrder}`, so));
+      // Edge to customer
+      const custId = `customer_${so.soldToParty}`;
+      if (nodeSet.has(custId)) {
+        links.push({ source: custId, target: id, type: 'PLACED', label: 'placed' });
+      }
+    }
+
+    // --- Products ---
+    const products = await getProducts(100);
+    for (const p of products) {
+      if (p.product) {
+        const id = `product_${p.product}`;
+        const desc = await getProductDescription(p.product);
+        const label = desc?.productDescription ?? p.product ?? 'Product';
+        const data = { ...p, productDescription: label };
+        addNode(makeNode(id, 'Product', label, data));
+      }
+    }
+
+    // --- Sales Order Items (edges SO→Product) ---
+    const soItems = await getSalesOrderItems(300);
+    const soItemsMap = new Map<string, Set<string>>();
+    for (const item of soItems) {
+      if (item.salesOrder && item.material) {
+        const key = `${item.salesOrder}_${item.material}`;
+        soItemsMap.set(key, new Set());
+      }
+    }
+    for (const [key] of soItemsMap) {
+      const [so, mat] = key.split('_');
+      const soId = `so_${so}`;
+      const prodId = `product_${mat}`;
+      if (nodeSet.has(soId) && nodeSet.has(prodId)) {
+        links.push({ source: soId, target: prodId, type: 'CONTAINS', label: 'contains' });
+      }
+    }
+
+    // --- Deliveries ---
+    const deliveries = await getDeliveries(limit);
+    for (const d of deliveries) {
+      const id = `del_${d.deliveryDocument}`;
+      addNode(makeNode(id, 'Delivery', `DEL ${d.deliveryDocument}`, d));
+    }
+
+    // Delivery items → link to SO
+    const delItems = await getDeliveryItems(300);
+    for (const di of delItems) {
+      const delId = `del_${di.deliveryDocument}`;
+      const soId = `so_${di.referenceSdDocument}`;
+      if (nodeSet.has(delId) && nodeSet.has(soId)) {
+        links.push({ source: soId, target: delId, type: 'FULFILLED_BY', label: 'fulfilled by' });
+      }
+    }
+
+    // --- Billing Documents ---
+    const billings = await getBillingDocuments(limit);
+    for (const b of billings) {
+      if (b.billingDocumentIsCancelled !== 'true') {
+        const id = `bill_${b.billingDocument}`;
+        addNode(makeNode(id, 'BillingDocument', `BILL ${b.billingDocument}`, b));
+      }
+    }
+
+    // Billing items → link to Delivery
+    const billItems = await getBillingItems(400);
+    for (const bi of billItems) {
+      const billId = `bill_${bi.billingDocument}`;
+      const delId = `del_${bi.referenceSdDocument}`;
+      if (nodeSet.has(billId) && nodeSet.has(delId)) {
+        links.push({ source: delId, target: billId, type: 'BILLED_AS', label: 'billed as' });
+      }
+    }
+
+    // --- Journal Entries ---
+    const journals = await getJournalEntries(limit);
+    for (const j of journals) {
+      const id = `je_${j.accountingDocument}`;
+      if (!nodeSet.has(id)) {
+        addNode(makeNode(id, 'JournalEntry', `JE ${j.accountingDocument}`, j));
+      }
+    }
+
+    // --- Payments ---
+    const payments = await getPayments(limit);
+    const addedPayDocs = new Set<string>();
+    for (const p of payments) {
+      const payDocId = `pay_${p.accountingDocument}`;
+      if (!addedPayDocs.has(payDocId)) {
+        addedPayDocs.add(payDocId);
+        if (!nodeSet.has(payDocId)) {
+          addNode(makeNode(payDocId, 'Payment', `PAY ${p.accountingDocument}`, p));
+        }
+      }
+    }
+
+    console.log(`[buildGraphDataRealAsync] Built graph with ${nodes.length} nodes and ${links.length} edges from real data`);
+    return { nodes, links: deduplicateLinks(links) };
+  } catch (err) {
+    console.error('[buildGraphDataRealAsync] Error building real graph:', err);
+    throw err;
+  }
 }
 
 export function buildGraphData(limit = 200): GraphData {
@@ -224,6 +373,57 @@ export function getNodeDetails(nodeId: string): GraphNode | null {
   return { id: nodeId, nodeType, label, data: row };
 }
 
+export async function getNodeDetailsAsync(nodeId: string): Promise<GraphNode | null> {
+  const parts = nodeId.split('_');
+  const prefix = parts[0];
+  const id = parts.slice(1).join('_');
+
+  let row: RawRecord | undefined;
+  let nodeType: NodeType;
+  let label: string;
+
+  if (prefix === 'so') {
+    const salesOrders = await getSalesOrders(10000);
+    row = salesOrders.find((so: any) => so.salesOrder === id) as RawRecord | undefined;
+    nodeType = 'SalesOrder';
+    label = `SO ${id}`;
+  } else if (prefix === 'bill') {
+    const billings = await getBillingDocuments(10000);
+    row = billings.find((b: any) => b.billingDocument === id) as RawRecord | undefined;
+    nodeType = 'BillingDocument';
+    label = `BILL ${id}`;
+  } else if (prefix === 'del') {
+    const deliveries = await getDeliveries(10000);
+    row = deliveries.find((d: any) => d.deliveryDocument === id) as RawRecord | undefined;
+    nodeType = 'Delivery';
+    label = `DEL ${id}`;
+  } else if (prefix === 'pay') {
+    const payments = await getPayments(10000);
+    row = payments.find((p: any) => p.accountingDocument === id) as RawRecord | undefined;
+    nodeType = 'Payment';
+    label = `PAY ${id}`;
+  } else if (prefix === 'je') {
+    const journals = await getJournalEntries(10000);
+    row = journals.find((j: any) => j.accountingDocument === id) as RawRecord | undefined;
+    nodeType = 'JournalEntry';
+    label = `JE ${id}`;
+  } else if (prefix === 'customer') {
+    row = (await getBusinessPartner(id)) as RawRecord | undefined;
+    nodeType = 'Customer';
+    label = row?.businessPartnerFullName ?? `Customer ${id}`;
+  } else if (prefix === 'product') {
+    row = (await getProduct(id)) as RawRecord | undefined;
+    const desc = await getProductDescription(id);
+    nodeType = 'Product';
+    label = desc?.productDescription ?? row?.product ?? id;
+  } else {
+    return null;
+  }
+
+  if (!row) return null;
+  return { id: nodeId, nodeType, label, data: row };
+}
+
 /**
  * Generate demo/fallback graph data when database is unavailable
  * O2C Flow: Customer → SO → Delivery → Billing → JE → Payment
@@ -309,6 +509,16 @@ export function buildDemoGraphData(): GraphData {
 /**
  * Safely build graph data with fallback to demo data if database unavailable
  */
+export async function buildGraphDataSafeAsync(limit = 200): Promise<GraphData> {
+  try {
+    // Try to load real data from JSONL files
+    return await buildGraphDataRealAsync(limit);
+  } catch (err) {
+    console.warn('[buildGraphDataSafeAsync] Real data loading failed, using demo data:', err);
+    return buildDemoGraphData();
+  }
+}
+
 export function buildGraphDataSafe(limit = 200): GraphData {
   try {
     return buildGraphData(limit);
