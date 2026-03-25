@@ -226,6 +226,7 @@ export function getNodeDetails(nodeId: string): GraphNode | null {
 
 /**
  * Generate demo/fallback graph data when database is unavailable
+ * O2C Flow: Customer → SO → Delivery → Billing → JE → Payment
  */
 export function buildDemoGraphData(): GraphData {
   const nodes: GraphNode[] = [];
@@ -233,76 +234,74 @@ export function buildDemoGraphData(): GraphData {
 
   // Customers
   const customers = [
-    { id: 'customer_C001', name: 'Acme Corp', data: { customer: 'C001', businessPartnerFullName: 'Acme Corp' } },
-    { id: 'customer_C002', name: 'Global Tech Inc', data: { customer: 'C002', businessPartnerFullName: 'Global Tech Inc' } },
-    { id: 'customer_C003', name: 'Future Systems Ltd', data: { customer: 'C003', businessPartnerFullName: 'Future Systems Ltd' } },
+    { id: 'customer_CUST001', name: 'Acme Corporation', data: { customer: 'CUST001', businessPartnerFullName: 'Acme Corporation' } },
+    { id: 'customer_CUST002', name: 'Global Tech Industries', data: { customer: 'CUST002', businessPartnerFullName: 'Global Tech Industries' } },
+    { id: 'customer_CUST003', name: 'Future Systems Ltd', data: { customer: 'CUST003', businessPartnerFullName: 'Future Systems Ltd' } },
   ];
   customers.forEach(c => nodes.push({ id: c.id, nodeType: 'Customer', label: c.name, data: c.data }));
 
   // Products
   const products = [
-    { id: 'product_P001', name: 'Widget A', data: { product: 'P001', productDescription: 'Widget A' } },
-    { id: 'product_P002', name: 'Widget B', data: { product: 'P002', productDescription: 'Widget B' } },
-    { id: 'product_P003', name: 'Component X', data: { product: 'P003', productDescription: 'Component X' } },
+    { id: 'product_P001', name: 'Premium Widget A', data: { product: 'P001', productDescription: 'Premium Widget A' } },
+    { id: 'product_P002', name: 'Standard Widget B', data: { product: 'P002', productDescription: 'Standard Widget B' } },
+    { id: 'product_P003', name: 'Component X Pro', data: { product: 'P003', productDescription: 'Component X Pro' } },
   ];
   products.forEach(p => nodes.push({ id: p.id, nodeType: 'Product', label: p.name, data: p.data }));
 
-  // Sales Orders
-  const salesOrders = [
-    { id: 'so_SO001', label: 'SO SO001', custId: 'customer_C001', data: { salesOrder: 'SO001', soldToParty: 'C001' } },
-    { id: 'so_SO002', label: 'SO SO002', custId: 'customer_C002', data: { salesOrder: 'SO002', soldToParty: 'C002' } },
-    { id: 'so_SO003', label: 'SO SO003', custId: 'customer_C001', data: { salesOrder: 'SO003', soldToParty: 'C001' } },
-  ];
-  salesOrders.forEach(so => {
-    nodes.push({ id: so.id, nodeType: 'SalesOrder', label: so.label, data: so.data });
-    links.push({ source: so.custId, target: so.id, type: 'PLACED', label: 'placed' });
-  });
+  // Complete O2C flow for Customer 1
+  // SO001 → DEL001 → BILL001 → JE001 → PAY001
+  nodes.push(
+    { id: 'so_SO001', nodeType: 'SalesOrder', label: 'SO SO001', data: { salesOrder: 'SO001', soldToParty: 'CUST001', creationDate: '2026-03-20' } },
+    { id: 'del_DEL001', nodeType: 'Delivery', label: 'DEL DEL001', data: { deliveryDocument: 'DEL001', referenceSdDocument: 'SO001' } },
+    { id: 'bill_BILL001', nodeType: 'BillingDocument', label: 'BILL BILL001', data: { billingDocument: 'BILL001', referenceSdDocument: 'DEL001', totalNetAmount: '45000' } },
+    { id: 'je_JE001', nodeType: 'JournalEntry', label: 'JE JE001', data: { accountingDocument: 'JE001', linkedBillingDoc: 'BILL001', amountInTransactionCurrency: '45000' } },
+    { id: 'pay_PAY001', nodeType: 'Payment', label: 'PAY PAY001', data: { accountingDocument: 'PAY001', salesDocument: 'SO001' } }
+  );
 
-  // SO → Product relationships
-  links.push({ source: 'so_SO001', target: 'product_P001', type: 'CONTAINS', label: 'contains' });
-  links.push({ source: 'so_SO002', target: 'product_P002', type: 'CONTAINS', label: 'contains' });
-  links.push({ source: 'so_SO003', target: 'product_P001', type: 'CONTAINS', label: 'contains' });
-  links.push({ source: 'so_SO003', target: 'product_P003', type: 'CONTAINS', label: 'contains' });
+  // Links for flow 1
+  links.push(
+    { source: 'customer_CUST001', target: 'so_SO001', type: 'PLACED', label: 'placed' },
+    { source: 'so_SO001', target: 'product_P001', type: 'CONTAINS', label: 'contains' },
+    { source: 'so_SO001', target: 'del_DEL001', type: 'FULFILLED_BY', label: 'fulfilled by' },
+    { source: 'del_DEL001', target: 'bill_BILL001', type: 'BILLED_AS', label: 'billed as' },
+    { source: 'bill_BILL001', target: 'je_JE001', type: 'POSTED_TO', label: 'posted to' },
+    { source: 'je_JE001', target: 'pay_PAY001', type: 'CLEARED_BY', label: 'cleared by' },
+    { source: 'so_SO001', target: 'pay_PAY001', type: 'PAID_VIA', label: 'paid via' }
+  );
 
-  // Deliveries
-  const deliveries = [
-    { id: 'del_D001', label: 'DEL D001', soId: 'so_SO001', data: { deliveryDocument: 'D001', referenceSdDocument: 'SO001' } },
-    { id: 'del_D002', label: 'DEL D002', soId: 'so_SO002', data: { deliveryDocument: 'D002', referenceSdDocument: 'SO002' } },
-  ];
-  deliveries.forEach(del => {
-    nodes.push({ id: del.id, nodeType: 'Delivery', label: del.label, data: del.data });
-    links.push({ source: del.soId, target: del.id, type: 'FULFILLED_BY', label: 'fulfilled by' });
-  });
+  // Complete O2C flow for Customer 2
+  // SO002 → DEL002 → BILL002 → JE002 → PAY002
+  nodes.push(
+    { id: 'so_SO002', nodeType: 'SalesOrder', label: 'SO SO002', data: { salesOrder: 'SO002', soldToParty: 'CUST002', creationDate: '2026-03-21' } },
+    { id: 'del_DEL002', nodeType: 'Delivery', label: 'DEL DEL002', data: { deliveryDocument: 'DEL002', referenceSdDocument: 'SO002' } },
+    { id: 'bill_BILL002', nodeType: 'BillingDocument', label: 'BILL BILL002', data: { billingDocument: 'BILL002', referenceSdDocument: 'DEL002', totalNetAmount: '32500' } },
+    { id: 'je_JE002', nodeType: 'JournalEntry', label: 'JE JE002', data: { accountingDocument: 'JE002', linkedBillingDoc: 'BILL002', amountInTransactionCurrency: '32500' } },
+    { id: 'pay_PAY002', nodeType: 'Payment', label: 'PAY PAY002', data: { accountingDocument: 'PAY002', salesDocument: 'SO002' } }
+  );
 
-  // Billing Documents
-  const billings = [
-    { id: 'bill_B001', label: 'BILL B001', delId: 'del_D001', data: { billingDocument: 'B001', referenceSdDocument: 'D001' } },
-    { id: 'bill_B002', label: 'BILL B002', delId: 'del_D002', data: { billingDocument: 'B002', referenceSdDocument: 'D002' } },
-  ];
-  billings.forEach(bill => {
-    nodes.push({ id: bill.id, nodeType: 'BillingDocument', label: bill.label, data: bill.data });
-    links.push({ source: bill.delId, target: bill.id, type: 'BILLED', label: 'billed' });
-  });
+  links.push(
+    { source: 'customer_CUST002', target: 'so_SO002', type: 'PLACED', label: 'placed' },
+    { source: 'so_SO002', target: 'product_P002', type: 'CONTAINS', label: 'contains' },
+    { source: 'so_SO002', target: 'del_DEL002', type: 'FULFILLED_BY', label: 'fulfilled by' },
+    { source: 'del_DEL002', target: 'bill_BILL002', type: 'BILLED_AS', label: 'billed as' },
+    { source: 'bill_BILL002', target: 'je_JE002', type: 'POSTED_TO', label: 'posted to' },
+    { source: 'je_JE002', target: 'pay_PAY002', type: 'CLEARED_BY', label: 'cleared by' },
+    { source: 'so_SO002', target: 'pay_PAY002', type: 'PAID_VIA', label: 'paid via' }
+  );
 
-  // Journal Entries
-  const journals = [
-    { id: 'je_J001', label: 'JE J001', billId: 'bill_B001', data: { accountingDocument: 'J001' } },
-    { id: 'je_J002', label: 'JE J002', billId: 'bill_B002', data: { accountingDocument: 'J002' } },
-  ];
-  journals.forEach(je => {
-    nodes.push({ id: je.id, nodeType: 'JournalEntry', label: je.label, data: je.data });
-    links.push({ source: je.billId, target: je.id, type: 'POSTED_TO', label: 'posted to' });
-  });
+  // Partial O2C flow for Customer 3 (SO with multiple products, still in delivery)
+  // SO003 → DEL003 (not yet billed)
+  nodes.push(
+    { id: 'so_SO003', nodeType: 'SalesOrder', label: 'SO SO003', data: { salesOrder: 'SO003', soldToParty: 'CUST003', creationDate: '2026-03-22' } },
+    { id: 'del_DEL003', nodeType: 'Delivery', label: 'DEL DEL003', data: { deliveryDocument: 'DEL003', referenceSdDocument: 'SO003' } }
+  );
 
-  // Payments
-  const payments = [
-    { id: 'pay_PAY001', label: 'PAY PAY001', jeId: 'je_J001', data: { accountingDocument: 'PAY001' } },
-    { id: 'pay_PAY002', label: 'PAY PAY002', jeId: 'je_J002', data: { accountingDocument: 'PAY002' } },
-  ];
-  payments.forEach(pay => {
-    nodes.push({ id: pay.id, nodeType: 'Payment', label: pay.label, data: pay.data });
-    links.push({ source: pay.jeId, target: pay.id, type: 'SETTLED', label: 'settled' });
-  });
+  links.push(
+    { source: 'customer_CUST003', target: 'so_SO003', type: 'PLACED', label: 'placed' },
+    { source: 'so_SO003', target: 'product_P001', type: 'CONTAINS', label: 'contains' },
+    { source: 'so_SO003', target: 'product_P003', type: 'CONTAINS', label: 'contains' },
+    { source: 'so_SO003', target: 'del_DEL003', type: 'FULFILLED_BY', label: 'fulfilled by' }
+  );
 
   return { nodes, links };
 }
