@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { classifyAndGenerateSQL, generateNaturalLanguageAnswer, extractHighlightedNodes } from '@/lib/gemini';
 import { queryDb, initDb } from '@/lib/db';
+import { generateOfflineSQLFallback, isOfflineLLMApplicable } from '@/lib/offline-llm';
 import {
   getBillingDocuments,
   getBillingItems,
@@ -270,11 +271,23 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 1: Classify query and generate SQL
-    const classifiedOrResponse = await withLocalBillingTraceFallback(message, () =>
-      classifyAndGenerateSQL(message, history)
-    );
-    if (classifiedOrResponse instanceof Response) return classifiedOrResponse;
-    const classified = classifiedOrResponse;
+    let classified;
+    try {
+      const classifiedOrResponse = await withLocalBillingTraceFallback(message, () =>
+        classifyAndGenerateSQL(message, history)
+      );
+      if (classifiedOrResponse instanceof Response) return classifiedOrResponse;
+      classified = classifiedOrResponse;
+    } catch (geminiError) {
+      // Fallback to offline LLM if Gemini API fails
+      if (isOfflineLLMApplicable(geminiError)) {
+        console.log('[API/chat] Gemini API failed, using offline LLM fallback:', 
+          geminiError instanceof Error ? geminiError.message : String(geminiError));
+        classified = generateOfflineSQLFallback(message);
+      } else {
+        throw geminiError;
+      }
+    }
 
     // Handle guardrail / clarify responses
     if (classified.type === 'guardrail' || classified.type === 'clarify') {
@@ -357,11 +370,31 @@ export async function POST(req: NextRequest) {
 
     // Step 4: Stream natural language answer
     const sql = classified.sql || '';
-    const streamOrResponse = await withLocalBillingTraceFallback(message, () =>
-      generateNaturalLanguageAnswer(message, sql, rows, history)
-    );
-    if (streamOrResponse instanceof Response) return streamOrResponse;
-    const stream = streamOrResponse;
+    let stream;
+    try {
+      const streamOrResponse = await withLocalBillingTraceFallback(message, () =>
+        generateNaturalLanguageAnswer(message, sql, rows, history)
+      );
+      if (streamOrResponse instanceof Response) return streamOrResponse;
+      stream = streamOrResponse;
+    } catch (geminiError) {
+      // Fallback: create a simple text response with the query results
+      if (isOfflineLLMApplicable(geminiError)) {
+        console.log('[API/chat] Gemini streaming failed, using simple fallback response');
+        const encoder = new TextEncoder();
+        const summary = rows.length === 0
+          ? `No results found for your query.`
+          : `Found ${rows.length} result(s). Here's a summary of the data:\n${JSON.stringify(rows.slice(0, 10), null, 2)}`;
+        stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(summary));
+            controller.close();
+          },
+        });
+      } else {
+        throw geminiError;
+      }
+    }
 
     // Return streaming response with metadata in headers
     return new Response(stream, {
