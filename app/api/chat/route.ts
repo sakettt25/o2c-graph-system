@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { classifyAndGenerateSQL, generateNaturalLanguageAnswer, extractHighlightedNodes } from '@/lib/gemini';
 import { queryDb, initDb } from '@/lib/db';
-import { generateOfflineSQLFallback, isOfflineLLMApplicable } from '@/lib/offline-llm';
+import { generateOfflineSQLFallback } from '@/lib/offline-llm';
 import {
   getBillingDocuments,
   getBillingItems,
@@ -256,6 +256,20 @@ function mapGeminiErrorToResponse(message: string): NextResponse | null {
   return null;
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     // Initialize database
@@ -273,20 +287,18 @@ export async function POST(req: NextRequest) {
     // Step 1: Classify query and generate SQL
     let classified;
     try {
-      const classifiedOrResponse = await withLocalBillingTraceFallback(message, () =>
-        classifyAndGenerateSQL(message, history)
+      const classifiedOrResponse = await withTimeout(
+        withLocalBillingTraceFallback(message, () => classifyAndGenerateSQL(message, history)),
+        10000,
+        'SQL generation'
       );
       if (classifiedOrResponse instanceof Response) return classifiedOrResponse;
       classified = classifiedOrResponse;
     } catch (geminiError) {
-      // Fallback to offline LLM if Gemini API fails
-      if (isOfflineLLMApplicable(geminiError)) {
-        console.log('[API/chat] Gemini API failed, using offline LLM fallback:', 
-          geminiError instanceof Error ? geminiError.message : String(geminiError));
-        classified = generateOfflineSQLFallback(message);
-      } else {
-        throw geminiError;
-      }
+      // Always fallback to offline SQL generation to avoid 500 responses
+      console.log('[API/chat] Model-based SQL generation failed, using offline LLM fallback:',
+        geminiError instanceof Error ? geminiError.message : String(geminiError));
+      classified = generateOfflineSQLFallback(message);
     }
 
     // Handle guardrail / clarify responses
@@ -372,28 +384,27 @@ export async function POST(req: NextRequest) {
     const sql = classified.sql || '';
     let stream;
     try {
-      const streamOrResponse = await withLocalBillingTraceFallback(message, () =>
-        generateNaturalLanguageAnswer(message, sql, rows, history)
+      const streamOrResponse = await withTimeout(
+        withLocalBillingTraceFallback(message, () => generateNaturalLanguageAnswer(message, sql, rows, history)),
+        10000,
+        'Answer generation'
       );
       if (streamOrResponse instanceof Response) return streamOrResponse;
       stream = streamOrResponse;
     } catch (geminiError) {
-      // Fallback: create a simple text response with the query results
-      if (isOfflineLLMApplicable(geminiError)) {
-        console.log('[API/chat] Gemini streaming failed, using simple fallback response');
-        const encoder = new TextEncoder();
-        const summary = rows.length === 0
-          ? `No results found for your query.`
-          : `Found ${rows.length} result(s). Here's a summary of the data:\n${JSON.stringify(rows.slice(0, 10), null, 2)}`;
-        stream = new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(encoder.encode(summary));
-            controller.close();
-          },
-        });
-      } else {
-        throw geminiError;
-      }
+      // Always fallback: create a simple text response with query results
+      console.log('[API/chat] Model-based answer generation failed, using simple fallback response:',
+        geminiError instanceof Error ? geminiError.message : String(geminiError));
+      const encoder = new TextEncoder();
+      const summary = rows.length === 0
+        ? 'No results found for your query.'
+        : `Found ${rows.length} result(s). Here are the top rows:\n${JSON.stringify(rows.slice(0, 10), null, 2)}`;
+      stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode(summary));
+          controller.close();
+        },
+      });
     }
 
     // Return streaming response with metadata in headers

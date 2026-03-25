@@ -4,8 +4,6 @@
  * when Gemini API is unavailable
  */
 
-import { DB_SCHEMA } from './types';
-import { parseSemanticContext, generateSemanticSQLHints } from './semantic-search';
 
 export interface OfflineSQLResponse {
   type: 'data' | 'guardrail' | 'clarify';
@@ -31,7 +29,7 @@ const SEMANTIC_RULES: Record<string, string> = {
   'payment|paid|receive': 'payments_accounts_receivable',
   
   // Accounting queries
-  'journal entry|je|accounting': 'journal_entry_items_accounts_receivable',
+  'journal entry|je|accounting': 'journal_entry_items',
   
   // Customer/Partner queries
   'customer|partner|business partner|company': 'business_partners',
@@ -81,6 +79,30 @@ export function generateOfflineSQLFallback(
   userMessage: string
 ): OfflineSQLResponse {
   const lower = userMessage.toLowerCase();
+
+  // High-priority business query: products with most billing documents
+  if (
+    lower.includes('product') &&
+    lower.includes('billing') &&
+    (lower.includes('most') || lower.includes('top') || lower.includes('highest'))
+  ) {
+    return {
+      type: 'data',
+      sql: `
+        SELECT
+          bdi.material AS product,
+          COALESCE(MAX(pd.productDescription), bdi.material) AS productDescription,
+          COUNT(DISTINCT bdi.billingDocument) AS billingDocumentCount
+        FROM billing_document_items bdi
+        LEFT JOIN product_descriptions pd
+          ON pd.product = bdi.material
+        GROUP BY bdi.material
+        ORDER BY billingDocumentCount DESC
+        LIMIT 10
+      `.trim(),
+      explanation: 'Top products ranked by number of billing documents',
+    };
+  }
   
   // Check for non-dataset questions
   if (
@@ -100,8 +122,6 @@ export function generateOfflineSQLFallback(
   }
   
   // Extract semantic context
-  const { detectedTypes } = parseSemanticContext(userMessage);
-  
   // Try to determine the primary table
   const table = getTableFromKeyword(userMessage);
   
@@ -131,7 +151,7 @@ export function generateOfflineSQLFallback(
           UNION ALL
           SELECT 'Delivery' as step, deliveryDocument as id FROM outbound_delivery_headers WHERE deliveryDocument = '${docId}'
           UNION ALL
-          SELECT 'JournalEntry' as step, accountingDocument as id FROM journal_entry_items_accounts_receivable WHERE accountingDocument = '${docId}'
+          SELECT 'JournalEntry' as step, accountingDocument as id FROM journal_entry_items WHERE accountingDocument = '${docId}'
         )
         SELECT * FROM doc_data LIMIT 100
       `;
@@ -179,7 +199,7 @@ export function generateOfflineSQLFallback(
       LEFT JOIN billing_document_headers bh ON bh.billingDocument = bi.billingDocument
       LEFT JOIN outbound_delivery_items di ON di.referenceSdDocument = sh.salesOrder
       LEFT JOIN outbound_delivery_headers oh ON oh.deliveryDocument = di.deliveryDocument
-      LEFT JOIN journal_entry_items_accounts_receivable je ON je.accountingDocument = bh.accountingDocument
+      LEFT JOIN journal_entry_items je ON je.accountingDocument = bh.accountingDocument
       LIMIT 50
     `;
     return {
@@ -213,6 +233,8 @@ export function isOfflineLLMApplicable(error: unknown): boolean {
     message.includes('network') ||
     message.includes('timeout') ||
     message.includes('Cannot reach') ||
-    message.includes('Connection refused')
+    message.includes('Connection refused') ||
+    message.includes('Cannot set properties of undefined') ||
+    message.includes('exports')
   );
 }
