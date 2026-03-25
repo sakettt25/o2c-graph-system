@@ -1,12 +1,14 @@
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import path from 'path';
-import { readFileSync } from 'fs';
+import { readFile } from 'fs/promises';
 
 let db: SqlJsDatabase | null = null;
 let initPromise: Promise<SqlJsDatabase> | null = null;
+let initError: Error | null = null;
 
 async function initDb(): Promise<SqlJsDatabase> {
   if (db) return db;
+  if (initError) throw initError;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
@@ -16,11 +18,23 @@ async function initDb(): Promise<SqlJsDatabase> {
         ? path.resolve(process.env.DB_PATH)
         : path.join(process.cwd(), 'data', 'o2c.db');
       
-      const FileBuffer = readFileSync(dbPath);
-      db = new SQL.Database(FileBuffer);
-      return db;
+      console.log('[DB] Initializing database from:', dbPath);
+      
+      try {
+        const fileBuffer = await readFile(dbPath);
+        db = new SQL.Database(fileBuffer);
+        console.log('[DB] Database initialized successfully');
+        return db;
+      } catch (fileErr) {
+        console.error('[DB] Failed to read database file:', fileErr);
+        // Create an empty database if file doesn't exist
+        db = new SQL.Database();
+        console.log('[DB] Created empty database');
+        return db;
+      }
     } catch (err) {
-      console.error('Failed to initialize database:', err);
+      console.error('[DB] Database initialization failed:', err);
+      initError = err as Error;
       throw err;
     }
   })();

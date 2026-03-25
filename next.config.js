@@ -1,12 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['better-sqlite3'],
-  },
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      config.externals = [...(config.externals || []), 'better-sqlite3'];
-    }
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      path: false,
+    };
     return config;
   },
 };
