@@ -20,18 +20,10 @@ async function initDb(): Promise<SqlJsDatabase> {
       
       console.log('[DB] Initializing database from:', dbPath);
       
-      try {
-        const fileBuffer = await readFile(dbPath);
-        db = new SQL.Database(fileBuffer);
-        console.log('[DB] Database initialized successfully');
-        return db;
-      } catch (fileErr) {
-        console.error('[DB] Failed to read database file:', fileErr);
-        // Create an empty database if file doesn't exist
-        db = new SQL.Database();
-        console.log('[DB] Created empty database');
-        return db;
-      }
+      const fileBuffer = await readFile(dbPath);
+      db = new SQL.Database(fileBuffer);
+      console.log('[DB] Database initialized successfully with', db.exec('SELECT COUNT(*) as tableCount FROM sqlite_master WHERE type="table"')[0]?.values[0]?.[0] || 0, 'tables');
+      return db;
     } catch (err) {
       console.error('[DB] Database initialization failed:', err);
       initError = err as Error;
