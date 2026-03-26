@@ -235,6 +235,50 @@ async function buildRowsWithoutDb(message: string, sql: string): Promise<DataRow
   const lowerMessage = message.toLowerCase();
   const lowerSql = sql.toLowerCase();
 
+  const deliveriesWithoutBillingQuery =
+    ((lowerMessage.includes('deliver') || lowerMessage.includes('delivery')) &&
+      lowerMessage.includes('no billing')) ||
+    ((lowerMessage.includes('deliver') || lowerMessage.includes('delivery')) &&
+      (lowerMessage.includes('not billed') || lowerMessage.includes('without billing'))) ||
+    (lowerSql.includes('outbound_delivery') && lowerSql.includes('billing') && lowerSql.includes('is null'));
+
+  if (deliveriesWithoutBillingQuery) {
+    const [deliveries, billingItems] = await Promise.all([
+      getDeliveries(10000),
+      getBillingItems(10000),
+    ]);
+
+    const billedDeliveryIds = new Set<string>();
+    for (const item of billingItems) {
+      const referenceDelivery = item.referenceSdDocument;
+      if (referenceDelivery) billedDeliveryIds.add(referenceDelivery);
+    }
+
+    const rows: DataRow[] = [];
+    for (const delivery of deliveries) {
+      const deliveryId = delivery.deliveryDocument;
+      if (!deliveryId) continue;
+      if (billedDeliveryIds.has(deliveryId)) continue;
+
+      rows.push({
+        deliveryDocument: deliveryId,
+        creationDate: delivery.creationDate ?? null,
+        actualGoodsMovementDate: delivery.actualGoodsMovementDate ?? null,
+        shippingPoint: delivery.shippingPoint ?? null,
+        overallGoodsMovementStatus: delivery.overallGoodsMovementStatus ?? null,
+        overallPickingStatus: delivery.overallPickingStatus ?? null,
+      });
+    }
+
+    rows.sort((a, b) => {
+      const aDate = a.creationDate ?? '';
+      const bDate = b.creationDate ?? '';
+      return String(bDate).localeCompare(String(aDate));
+    });
+
+    return rows.slice(0, 100);
+  }
+
   const isProductBillingRanking =
     (lowerMessage.includes('product') && lowerMessage.includes('billing') &&
       (lowerMessage.includes('most') || lowerMessage.includes('top') || lowerMessage.includes('highest'))) ||
