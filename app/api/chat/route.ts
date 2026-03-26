@@ -3,14 +3,16 @@ import { classifyAndGenerateSQL, generateNaturalLanguageAnswer, extractHighlight
 import { queryDb, initDb } from '@/lib/db';
 import { generateOfflineSQLFallback } from '@/lib/offline-llm';
 import {
+  getBusinessPartners,
   getBillingDocuments,
   getBillingItems,
   getDeliveries,
   getDeliveryItems,
+  getPayments,
   getProductDescription,
+  getProducts,
   getSalesOrders,
   getJournalEntries,
-  getPayments,
 } from '@/lib/data-loader';
 
 export const dynamic = 'force-dynamic';
@@ -234,6 +236,80 @@ async function withLocalBillingTraceFallback<T>(
 async function buildRowsWithoutDb(message: string, sql: string): Promise<DataRow[] | null> {
   const lowerMessage = message.toLowerCase();
   const lowerSql = sql.toLowerCase();
+
+  const isCountQuery = lowerMessage.includes('how many') || lowerMessage.includes('count');
+  const asksSalesOrders = lowerMessage.includes('sales order') || lowerMessage.includes('order');
+  const asksBilling = lowerMessage.includes('billing') || lowerMessage.includes('invoice') || lowerMessage.includes('bill');
+  const asksDeliveries = lowerMessage.includes('deliver') || lowerMessage.includes('shipment');
+  const asksPayments = lowerMessage.includes('payment') || lowerMessage.includes('paid');
+  const asksCustomers = lowerMessage.includes('customer') || lowerMessage.includes('business partner');
+  const asksProducts = lowerMessage.includes('product') || lowerMessage.includes('material') || lowerMessage.includes('sku');
+
+  if (isCountQuery) {
+    if (asksSalesOrders) {
+      const salesOrders = await getSalesOrders(10000);
+      return [{ metric: 'salesOrders', count: String(salesOrders.length) }];
+    }
+    if (asksBilling) {
+      const billingDocs = await getBillingDocuments(10000);
+      return [{ metric: 'billingDocuments', count: String(billingDocs.length) }];
+    }
+    if (asksDeliveries) {
+      const deliveries = await getDeliveries(10000);
+      return [{ metric: 'deliveries', count: String(deliveries.length) }];
+    }
+    if (asksPayments) {
+      const payments = await getPayments(10000);
+      return [{ metric: 'payments', count: String(payments.length) }];
+    }
+    if (asksCustomers) {
+      const customers = await getBusinessPartners();
+      return [{ metric: 'customers', count: String(customers.length) }];
+    }
+    if (asksProducts) {
+      const products = await getProducts(10000);
+      return [{ metric: 'products', count: String(products.length) }];
+    }
+  }
+
+  const isListQuery =
+    lowerMessage.includes('list') ||
+    lowerMessage.includes('show') ||
+    lowerMessage.includes('top') ||
+    lowerMessage.includes('latest');
+
+  if (isListQuery && asksSalesOrders) {
+    const salesOrders = await getSalesOrders(100);
+    return salesOrders.map((so: any) => ({
+      salesOrder: so.salesOrder ?? null,
+      soldToParty: so.soldToParty ?? null,
+      creationDate: so.creationDate ?? null,
+      totalNetAmount: so.totalNetAmount ?? null,
+      transactionCurrency: so.transactionCurrency ?? null,
+    }));
+  }
+
+  if (isListQuery && asksBilling) {
+    const billingDocs = await getBillingDocuments(100);
+    return billingDocs.map((bd: any) => ({
+      billingDocument: bd.billingDocument ?? null,
+      billingDocumentDate: bd.billingDocumentDate ?? null,
+      accountingDocument: bd.accountingDocument ?? null,
+      totalNetAmount: bd.totalNetAmount ?? null,
+      transactionCurrency: bd.transactionCurrency ?? null,
+    }));
+  }
+
+  if (isListQuery && asksDeliveries) {
+    const deliveries = await getDeliveries(100);
+    return deliveries.map((d: any) => ({
+      deliveryDocument: d.deliveryDocument ?? null,
+      creationDate: d.creationDate ?? null,
+      actualGoodsMovementDate: d.actualGoodsMovementDate ?? null,
+      shippingPoint: d.shippingPoint ?? null,
+      overallGoodsMovementStatus: d.overallGoodsMovementStatus ?? null,
+    }));
+  }
 
   const deliveriesWithoutBillingQuery =
     ((lowerMessage.includes('deliver') || lowerMessage.includes('delivery')) &&
@@ -525,7 +601,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({
             type: 'error',
             answer:
-              'Database engine is temporarily unavailable. Please try a product/billing ranking query or retry in a moment.',
+              'Database engine is temporarily unavailable. I can still answer common O2C list/count/link questions in offline mode—please try rephrasing with explicit entities (sales orders, billing documents, deliveries, payments, customers, or products).',
             sql: classified.sql,
             rows: [],
             highlightedNodes: [],
@@ -533,6 +609,10 @@ export async function POST(req: NextRequest) {
         }
       }
     } catch (err) {
+      const fallbackRows = await buildRowsWithoutDb(message, classified.sql);
+      if (fallbackRows) {
+        rows = fallbackRows;
+      } else {
       // Try billing flow trace as fallback
       const billingDocId = extractBillingFlowTraceDocumentId(message);
       if (billingDocId) {
@@ -555,6 +635,7 @@ export async function POST(req: NextRequest) {
         rows: [],
         highlightedNodes: [],
       });
+      }
     }
 
     // Step 3: Extract node IDs to highlight
