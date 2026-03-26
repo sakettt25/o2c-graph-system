@@ -237,6 +237,109 @@ async function buildRowsWithoutDb(message: string, sql: string): Promise<DataRow
   const lowerMessage = message.toLowerCase();
   const lowerSql = sql.toLowerCase();
 
+  const billingTraceIdMatch = message.match(/billing\s+document\s+(\d{5,})/i);
+  const traceFlowQuery =
+    Boolean(billingTraceIdMatch) &&
+    (lowerMessage.includes('trace') || lowerMessage.includes('flow'));
+
+  if (traceFlowQuery) {
+    const billingDocumentId = billingTraceIdMatch?.[1];
+    if (!billingDocumentId) return [];
+
+    const [allBillingDocs, allBillingItems, allDeliveries, allDeliveryItems, allSalesOrders, allJournalEntries, allPayments] =
+      await Promise.all([
+        getBillingDocuments(10000),
+        getBillingItems(10000),
+        getDeliveries(10000),
+        getDeliveryItems(10000),
+        getSalesOrders(10000),
+        getJournalEntries(10000),
+        getPayments(10000),
+      ]);
+
+    const billingHeader = allBillingDocs.find((b: any) => b.billingDocument === billingDocumentId);
+    if (!billingHeader) return [];
+
+    const billingItems = allBillingItems.filter((item: any) => item.billingDocument === billingDocumentId);
+    const deliveryIds = [...new Set(billingItems.map((item: any) => item.referenceSdDocument).filter(Boolean))];
+
+    const deliveryHeaders = allDeliveries.filter((d: any) => deliveryIds.includes(d.deliveryDocument));
+    const deliveryItems = allDeliveryItems.filter((item: any) => deliveryIds.includes(item.deliveryDocument));
+
+    const salesOrderIds = [...new Set(deliveryItems.map((item: any) => item.referenceSdDocument).filter(Boolean))];
+    const salesOrderHeaders = allSalesOrders.filter((so: any) => salesOrderIds.includes(so.salesOrder));
+
+    const accountingDocumentId = billingHeader.accountingDocument;
+    const journalEntries = accountingDocumentId
+      ? allJournalEntries.filter((je: any) => je.accountingDocument === accountingDocumentId)
+      : [];
+    const payments = accountingDocumentId
+      ? allPayments.filter((p: any) => p.accountingDocument === accountingDocumentId)
+      : [];
+
+    const rows: DataRow[] = [];
+
+    for (const so of salesOrderHeaders) {
+      rows.push({
+        step: 'SalesOrder',
+        id: so.salesOrder ?? null,
+        relatedId: so.soldToParty ?? null,
+        date: so.creationDate ?? null,
+        amount: so.totalNetAmount ? String(so.totalNetAmount) : null,
+        currency: so.transactionCurrency ?? null,
+        status: so.overallDeliveryStatus ?? null,
+      });
+    }
+
+    for (const delivery of deliveryHeaders) {
+      rows.push({
+        step: 'Delivery',
+        id: delivery.deliveryDocument ?? null,
+        relatedId: delivery.shippingPoint ?? null,
+        date: delivery.creationDate ?? null,
+        amount: null,
+        currency: null,
+        status: delivery.overallGoodsMovementStatus ?? null,
+      });
+    }
+
+    rows.push({
+      step: 'BillingDocument',
+      id: billingHeader.billingDocument ?? null,
+      relatedId: billingHeader.accountingDocument ?? null,
+      date: billingHeader.billingDocumentDate ?? null,
+      amount: billingHeader.totalNetAmount ? String(billingHeader.totalNetAmount) : null,
+      currency: billingHeader.transactionCurrency ?? null,
+      status: billingHeader.billingDocumentIsCancelled === 'true' ? 'Cancelled' : 'Active',
+    });
+
+    for (const je of journalEntries) {
+      rows.push({
+        step: 'JournalEntry',
+        id: je.accountingDocument ?? null,
+        relatedId: je.glAccount ?? null,
+        date: je.postingDate ?? null,
+        amount: je.amountInTransactionCurrency ? String(je.amountInTransactionCurrency) : null,
+        currency: je.transactionCurrency ?? null,
+        status: je.accountingDocumentType ?? null,
+      });
+    }
+
+    for (const payment of payments) {
+      rows.push({
+        step: 'Payment',
+        id: payment.accountingDocument ?? null,
+        relatedId: payment.customer ?? null,
+        date: payment.clearingDate ?? null,
+        amount: payment.amountInTransactionCurrency ? String(payment.amountInTransactionCurrency) : null,
+        currency: payment.transactionCurrency ?? null,
+        status: payment.postingDate ?? null,
+      });
+    }
+
+    return rows;
+  }
+
   const isCountQuery = lowerMessage.includes('how many') || lowerMessage.includes('count');
   const asksSalesOrders = lowerMessage.includes('sales order') || lowerMessage.includes('order');
   const asksBilling = lowerMessage.includes('billing') || lowerMessage.includes('invoice') || lowerMessage.includes('bill');
